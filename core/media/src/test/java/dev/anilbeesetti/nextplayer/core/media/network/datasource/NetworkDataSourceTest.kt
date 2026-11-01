@@ -50,10 +50,11 @@ class NetworkDataSourceTest {
         source.open(spec(position = 0))
         val out = ByteArray(20)
         var total = 0
-        while (true) {
-            val read = source.read(out, total, 20 - total)
+        // Guard on the buffer size: a zero-length read returns 0, not END_OF_INPUT.
+        while (total < out.size) {
+            val read = source.read(out, total, out.size - total)
             if (read == C.RESULT_END_OF_INPUT) break
-            total += read
+            if (read > 0) total += read
         }
 
         assertEquals(20, total)
