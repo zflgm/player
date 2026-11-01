@@ -76,7 +76,6 @@ android {
         create("release-self-signed") {
             initWith(getByName("release"))
             signingConfig = signingConfigs.findByName("selfSigned")
-            applicationIdSuffix = ".release"
             matchingFallbacks.add("release")
         }
     }
