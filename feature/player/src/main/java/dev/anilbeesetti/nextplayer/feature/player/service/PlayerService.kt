@@ -22,6 +22,7 @@ import androidx.media3.common.Player.DISCONTINUITY_REASON_SEEK
 import androidx.media3.common.TrackSelectionParameters
 import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlaybackException
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
@@ -209,6 +210,11 @@ class PlayerService : MediaSessionService() {
             restoreDecoderChoices(mediaItem)
             isMediaItemReady = false
             loadArtworkForCurrentMediaItem()
+            mediaSession?.player?.let { player ->
+                if (player.hasNextMediaItem()) {
+                    warmupConnectionFor(player.getMediaItemAt(player.currentMediaItemIndex + 1))
+                }
+            }
             mediaItem?.mediaMetadata?.let { metadata ->
                 mediaSession?.player?.run {
                     setPlaybackSpeed(metadata.playbackSpeed ?: playerPreferences.defaultPlaybackSpeed)
@@ -492,6 +498,10 @@ class PlayerService : MediaSessionService() {
             startPositionMs: Long,
         ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> = serviceScope.future(Dispatchers.Default) {
             val updatedMediaItems = updatedMediaItemsWithMetadata(mediaItems)
+            // Pre-connect the first two items so the handshake overlaps player startup instead of
+            // sitting in front of the first frame.
+            warmupConnectionFor(updatedMediaItems.getOrNull(startIndex))
+            warmupConnectionFor(updatedMediaItems.getOrNull(startIndex + 1))
             return@future MediaSession.MediaItemsWithStartPosition(updatedMediaItems, startIndex, startPositionMs)
         }
 
@@ -715,6 +725,19 @@ class PlayerService : MediaSessionService() {
         val player = ExoPlayer.Builder(applicationContext)
             .setRenderersFactory(renderersFactory)
             .setTrackSelector(trackSelector)
+            // Byte-capped buffering: the default time-only cap lets a 4K remux pin 500-600MB of
+            // heap, while the per-playback thresholds keep startup and rebuffering snappy.
+            .setLoadControl(
+                DefaultLoadControl.Builder()
+                    .setTargetBufferBytes(PLAYBACK_TARGET_BUFFER_BYTES)
+                    .setBufferDurationsMs(
+                        PLAYBACK_MIN_BUFFER_MS,
+                        PLAYBACK_MAX_BUFFER_MS,
+                        PLAYBACK_BUFFER_FOR_PLAYBACK_MS,
+                        PLAYBACK_BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS,
+                    )
+                    .build(),
+            )
             .setMediaSourceFactory(
                 ExternalAudioMediaSourceFactory(
                     // Network playback must survive transient drops: retry loads instead of
@@ -812,6 +835,13 @@ class PlayerService : MediaSessionService() {
     }
 
     private fun Long.validDurationOrNull(): Long? = takeIf { it != C.TIME_UNSET && it >= 0 }
+
+    /** Fire-and-forget pre-connect for a network item so its handshake runs ahead of playback. */
+    private fun warmupConnectionFor(mediaItem: MediaItem?) {
+        val uri = mediaItem?.localConfiguration?.uri ?: mediaItem?.mediaId?.toUri() ?: return
+        if (!NetworkUri.isNetworkUri(uri)) return
+        serviceScope.launch { dataSourceFactory.warmup(uri) }
+    }
 
     private suspend fun updatedMediaItemsWithMetadata(
         mediaItems: List<MediaItem>,
@@ -1086,6 +1116,14 @@ private const val DATA_SOURCE_RELEASE_TIMEOUT_MS = 5_000L
 // More retries than Media3's default of 3: SMB/SFTP reconnects after a Wi-Fi blip are slow but
 // usually succeed, and failing fast here just kills playback the user could have kept.
 private const val MINIMUM_LOADABLE_RETRY_COUNT = 5
+
+// Buffering bounds: heap is capped in bytes so high-bitrate remuxes cannot balloon memory, while
+// the time caps keep enough runway for Wi-Fi jitter without a slow start.
+private const val PLAYBACK_TARGET_BUFFER_BYTES = 128 * 1024 * 1024
+private const val PLAYBACK_MIN_BUFFER_MS = 25_000
+private const val PLAYBACK_MAX_BUFFER_MS = 60_000
+private const val PLAYBACK_BUFFER_FOR_PLAYBACK_MS = 2_500
+private const val PLAYBACK_BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS = 5_000
 
 @get:UnstableApi
 @set:UnstableApi

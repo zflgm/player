@@ -1,11 +1,11 @@
 package dev.anilbeesetti.nextplayer.core.media.network.clients
 
 import dev.anilbeesetti.nextplayer.core.media.network.NetworkClient
+import dev.anilbeesetti.nextplayer.core.media.network.PrefetchInputStream
 import dev.anilbeesetti.nextplayer.core.media.network.keys.SshKeyStore
 import dev.anilbeesetti.nextplayer.core.media.network.sftp.HostKeyConfirmationRequired
 import dev.anilbeesetti.nextplayer.core.media.network.sftp.HostKeyMismatch
 import dev.anilbeesetti.nextplayer.core.media.network.sftp.SftpHostKeyVerifier
-import dev.anilbeesetti.nextplayer.core.media.network.sftp.SftpOwnedInputStream
 import dev.anilbeesetti.nextplayer.core.media.network.sftp.SftpSecurityProvider
 import dev.anilbeesetti.nextplayer.core.model.NetworkAuthentication
 import dev.anilbeesetti.nextplayer.core.model.NetworkConnection
@@ -91,12 +91,16 @@ class SftpClient(
             val sftp = ssh.newSFTPClient()
             try {
                 val remoteFile = sftp.open(path, EnumSet.of(OpenMode.READ))
-                SftpOwnedInputStream(
-                    offset = offset,
-                    reader = remoteFile::read,
-                    remoteFile = remoteFile,
-                    sftpClient = sftp,
-                    sshClient = ssh,
+                PrefetchInputStream(
+                    reader = { fileOffset, buffer, destOffset, length ->
+                        remoteFile.read(fileOffset, buffer, destOffset, length)
+                    },
+                    startOffset = offset,
+                    onClosed = {
+                        runCatching { remoteFile.close() }
+                        runCatching { sftp.close() }
+                        runCatching { ssh.close() }
+                    },
                 )
             } catch (error: Throwable) {
                 runCatching { sftp.close() }

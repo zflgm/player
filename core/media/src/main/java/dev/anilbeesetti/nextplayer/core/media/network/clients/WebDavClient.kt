@@ -3,6 +3,7 @@ package dev.anilbeesetti.nextplayer.core.media.network.clients
 import com.thegrizzlylabs.sardineandroid.Sardine
 import com.thegrizzlylabs.sardineandroid.impl.OkHttpSardine
 import dev.anilbeesetti.nextplayer.core.media.network.NetworkClient
+import dev.anilbeesetti.nextplayer.core.media.network.PrefetchInputStream
 import dev.anilbeesetti.nextplayer.core.model.NetworkConnection
 import dev.anilbeesetti.nextplayer.core.model.NetworkFile
 import java.io.InputStream
@@ -93,10 +94,19 @@ class WebDavClient(private val connection: NetworkConnection) : NetworkClient {
             response.close()
             error("WebDAV request failed: ${response.code}")
         }
-        response.body?.byteStream() ?: run {
+        val body = response.body?.byteStream() ?: run {
             response.close()
             error("Empty WebDAV response body")
         }
+        PrefetchInputStream(
+            reader = { _, buffer, destOffset, length -> body.read(buffer, destOffset, length) },
+            startOffset = offset,
+            readers = 1,
+            onClosed = {
+                runCatching { body.close() }
+                runCatching { response.close() }
+            },
+        )
     }
 
     private companion object {

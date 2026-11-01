@@ -1,6 +1,7 @@
 package dev.anilbeesetti.nextplayer.core.media.network.clients
 
 import dev.anilbeesetti.nextplayer.core.media.network.NetworkClient
+import dev.anilbeesetti.nextplayer.core.media.network.PrefetchInputStream
 import dev.anilbeesetti.nextplayer.core.model.NetworkConnection
 import dev.anilbeesetti.nextplayer.core.model.NetworkFile
 import java.io.InputStream
@@ -124,11 +125,11 @@ class FtpClient(private val connection: NetworkConnection) : NetworkClient {
                 runCatching { streamClient.disconnect() }
                 error("Failed to open FTP stream for $path")
             }
-        object : InputStream() {
-            override fun read(): Int = raw.read()
-            override fun read(b: ByteArray, off: Int, len: Int): Int = raw.read(b, off, len)
-            override fun available(): Int = raw.available()
-            override fun close() {
+        PrefetchInputStream(
+            reader = { _, buffer, destOffset, length -> raw.read(buffer, destOffset, length) },
+            startOffset = offset,
+            readers = 1,
+            onClosed = {
                 runCatching { raw.close() }
                 runCatching {
                     if (streamClient.isConnected) {
@@ -137,7 +138,7 @@ class FtpClient(private val connection: NetworkConnection) : NetworkClient {
                         streamClient.disconnect()
                     }
                 }
-            }
-        }
+            },
+        )
     }
 }

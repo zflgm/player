@@ -28,6 +28,14 @@ class NextDataSourceFactory(
 
     /** Disconnects the network client held for playback. Call when the player is released. */
     suspend fun release() = sessions.release()
+
+    /**
+     * Pre-connects the network client for [uri] so the handshake doesn't sit in front of playback.
+     * Cheap to call for an already-warm connection; no-op for non-network uris.
+     */
+    suspend fun warmup(uri: Uri) {
+        if (NetworkUri.isNetworkUri(uri)) runCatching { sessions.target(uri) }
+    }
 }
 
 /**
