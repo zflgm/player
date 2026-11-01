@@ -83,6 +83,7 @@ class LocalNetworkConnectionRepositoryTest {
                 name = "Old",
                 protocol = NetworkProtocol.FTP.name,
                 host = "10.0.2.2",
+                port = null,
                 password = "plain-secret",
                 privateKeyPassphrase = "",
             ),
