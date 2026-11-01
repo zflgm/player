@@ -231,6 +231,11 @@ internal fun MediaPlayerContent(
         playbackError = errorState.playbackError,
         hasNextMediaItem = player.hasNextMediaItem(),
         onTryDecoderFallback = { onAction(PlayerAction.TryDecoderFallback) },
+        onRetry = {
+            errorState.dismiss()
+            player.prepare()
+            player.play()
+        },
         onPlayNextVideo = {
             errorState.dismiss()
             player.seekToNext()

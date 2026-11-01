@@ -27,6 +27,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
+import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.session.CommandButton
 import androidx.media3.session.CommandButton.ICON_UNDEFINED
 import androidx.media3.session.MediaSession
@@ -714,6 +715,9 @@ class PlayerService : MediaSessionService() {
         val player = ExoPlayer.Builder(applicationContext)
             .setRenderersFactory(renderersFactory)
             .setTrackSelector(trackSelector)
+            // Network playback must survive transient drops: retry loads instead of failing the
+            // whole item the first time a chunk fetch fails.
+            .setLoadErrorHandlingPolicy(DefaultLoadErrorHandlingPolicy(MINIMUM_LOADABLE_RETRY_COUNT))
             .setMediaSourceFactory(
                 ExternalAudioMediaSourceFactory(
                     DefaultMediaSourceFactory(applicationContext).setDataSourceFactory(dataSourceFactory),
@@ -1075,6 +1079,10 @@ private const val PLAYER_SERVICE_LOG_TAG = "PlayerService"
 
 // Network teardown in onDestroy is bounded so a stalled SMB close can never outlive the service.
 private const val DATA_SOURCE_RELEASE_TIMEOUT_MS = 5_000L
+
+// More retries than Media3's default of 3: SMB/SFTP reconnects after a Wi-Fi blip are slow but
+// usually succeed, and failing fast here just kills playback the user could have kept.
+private const val MINIMUM_LOADABLE_RETRY_COUNT = 5
 
 @get:UnstableApi
 @set:UnstableApi

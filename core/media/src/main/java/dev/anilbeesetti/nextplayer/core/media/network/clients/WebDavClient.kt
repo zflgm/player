@@ -6,6 +6,7 @@ import dev.anilbeesetti.nextplayer.core.media.network.NetworkClient
 import dev.anilbeesetti.nextplayer.core.model.NetworkConnection
 import dev.anilbeesetti.nextplayer.core.model.NetworkFile
 import java.io.InputStream
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Credentials
@@ -19,7 +20,13 @@ import okhttp3.Request
 class WebDavClient(private val connection: NetworkConnection) : NetworkClient {
 
     private var sardine: Sardine? = null
-    private val httpClient = OkHttpClient()
+
+    // Explicit timeouts: OkHttp's 10s default read timeout cuts weak-Wi-Fi streams mid-playback.
+    private val httpClient = OkHttpClient.Builder()
+        .connectTimeout(CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .readTimeout(READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .writeTimeout(READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .build()
 
     override val rootPath: String = ""
 
@@ -90,5 +97,10 @@ class WebDavClient(private val connection: NetworkConnection) : NetworkClient {
             response.close()
             error("Empty WebDAV response body")
         }
+    }
+
+    private companion object {
+        const val CONNECT_TIMEOUT_SECONDS = 15L
+        const val READ_TIMEOUT_SECONDS = 30L
     }
 }

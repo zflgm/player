@@ -1,5 +1,6 @@
 package dev.anilbeesetti.nextplayer.feature.player.ui
 
+import androidx.compose.foundation.layout.Row
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -18,6 +19,7 @@ internal fun PlayerErrorDialogs(
     playbackError: PlaybackException?,
     hasNextMediaItem: Boolean,
     onTryDecoderFallback: () -> Unit,
+    onRetry: () -> Unit,
     onPlayNextVideo: () -> Unit,
     onExit: () -> Unit,
 ) {
@@ -77,9 +79,15 @@ internal fun PlayerErrorDialogs(
                 )
             },
             confirmButton = {
-                if (hasNextMediaItem) {
-                    TextButton(onClick = onPlayNextVideo) {
-                        Text(text = stringResource(coreUiR.string.play_next_video))
+                Row {
+                    // Network errors are often transient; retrying is the first thing to try.
+                    TextButton(onClick = onRetry) {
+                        Text(text = stringResource(coreUiR.string.retry))
+                    }
+                    if (hasNextMediaItem) {
+                        TextButton(onClick = onPlayNextVideo) {
+                            Text(text = stringResource(coreUiR.string.play_next_video))
+                        }
                     }
                 }
             },
