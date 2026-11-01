@@ -531,7 +531,7 @@
     <string name="sort_shuffle">Shuffle</string>
     <string name="sort_restore_added_order">Restore added order</string>
     <string name="empty_playlist_title">This playlist is empty</string>
-    <string name="empty_playlist_description">Select videos in Home and choose Add to playlist.</string>
+    <string name="empty_playlist_description">Use the button below to add videos or folders.</string>
     <string name="playlist_unavailable">This playlist is no longer available.</string>
     <string name="search_playlist">Search playlist</string>
     <string name="close_search">Close search</string>
@@ -571,4 +571,11 @@
         <item quantity="one">%1$d day</item>
         <item quantity="other">%1$d days</item>
     </plurals>
+
+    <!-- Add-to-playlist sheet (playlist detail) -->
+    <string name="add_sheet_local_tab">Local media</string>
+    <string name="add_sheet_network_tab">Network folders</string>
+    <string name="add_selected_to_playlist">Add to playlist (%1$d)</string>
+    <string name="add_this_folder_recursive">Add this folder (including subfolders)</string>
+    <string name="add_items_succeeded">%1$d videos added</string>
 </resources>

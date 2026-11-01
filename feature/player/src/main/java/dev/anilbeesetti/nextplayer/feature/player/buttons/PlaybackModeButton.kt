@@ -30,6 +30,7 @@ fun PlaybackModeButton(
     PlayerButton(
         modifier = modifier.testTag(PLAYBACK_MODE_TEST_TAG),
         enabled = repeatState.isEnabled,
+        containerColor = PlayerButtonBlackAlpha,
         onClick = {
             // Read the live player state: a stale recomposition would replay the previous transition on a fast double tap.
             player?.run {

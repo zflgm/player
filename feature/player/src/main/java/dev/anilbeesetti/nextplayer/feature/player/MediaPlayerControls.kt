@@ -2,10 +2,6 @@ package dev.anilbeesetti.nextplayer.feature.player
 
 import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -23,7 +19,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -119,17 +114,9 @@ internal fun MediaPlayerControls(
                         }
                 },
         ) {
-            AnimatedVisibility(
-                visible = controlsVisibilityState.controlsVisible && !controlsVisibilityState.controlsLocked,
-                enter = fadeIn(),
-                exit = fadeOut(),
-            ) {
-                Box(
-                    Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.3f)),
-                )
-            }
+            // No full-screen scrim here on purpose: dimming the video whenever controls show is
+            // distracting. Bare buttons carry their own circular background instead (see
+            // PlayerButtonBlackAlpha) so they stay readable on bright frames.
             if (mediaPresentationState.isBuffering) {
                 CircularProgressIndicator(
                     Modifier

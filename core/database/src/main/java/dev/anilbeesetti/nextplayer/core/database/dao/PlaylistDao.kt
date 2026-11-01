@@ -153,17 +153,22 @@ interface PlaylistDao {
     /**
      * Reconciles a snapshot with a freshly scanned folder: vanished files leave, newly appeared
      * files join at the end, and everything still present keeps its row — and therefore its
-     * playback position.
+     * playback position. Rows added by hand from outside the mirrored folder are kept: they are
+     * not part of the scan and a refresh must not eat them.
      */
     @Transaction
     suspend fun applySnapshot(playlistId: Long, discoveredUris: List<String>, refreshedAt: Long): SnapshotDiff {
-        require(getPlaylistEntity(playlistId)?.type == SNAPSHOT_PLAYLIST_TYPE) {
+        val playlist = getPlaylistEntity(playlistId)
+        require(playlist?.type == SNAPSHOT_PLAYLIST_TYPE) {
             "Only network snapshots can be re-scanned"
         }
         val currentItems = getItems(playlistId)
         val discovered = discoveredUris.distinct()
         val stillThere = discovered.toSet()
-        val gone = currentItems.filter { it.uri !in stillThere }
+        val source = playlist.source
+        val gone = currentItems.filter { item ->
+            item.uri !in stillThere && (source == null || isUnderFolder(item.uri, source))
+        }
         if (gone.isNotEmpty()) {
             deleteItems(gone)
             normalizePositions(playlistId)
@@ -186,9 +191,9 @@ interface PlaylistDao {
     /** Item counts a snapshot refresh applied. */
     data class SnapshotDiff(val added: Int, val removed: Int)
 
-    suspend fun requireLocalPlaylist(playlistId: Long) {
-        require(getPlaylistEntity(playlistId)?.type == LOCAL_PLAYLIST_TYPE) {
-            "Only local playlists can be edited"
+    suspend fun requireEditablePlaylist(playlistId: Long) {
+        require(getPlaylistEntity(playlistId)?.type in REORDERABLE_PLAYLIST_TYPES) {
+            "Only local and network playlists can be edited"
         }
     }
 
@@ -251,11 +256,17 @@ interface PlaylistDao {
         replaceOrder(playlistId, getInsertionOrderUris(playlistId))
     }
 
+    /**
+     * Drops library rows whose files disappeared from the media store. Only `content://` rows are
+     * candidates: network and stream URIs live outside the library and must never be eaten here.
+     */
     @Transaction
     suspend fun removeMissingLocalItems(existingUris: Set<String>) {
         val localPlaylistIds = getLocalPlaylistIds().toSet()
         val missingItems = getAllItems().filter {
-            it.playlistId in localPlaylistIds && it.uri !in existingUris
+            it.playlistId in localPlaylistIds &&
+                it.uri.startsWith("content://") &&
+                it.uri !in existingUris
         }
         if (missingItems.isEmpty()) return
 
@@ -271,6 +282,13 @@ interface PlaylistDao {
 
         shiftPositions(playlistId, items.size + 1)
         updateItems(items.mapIndexed { position, item -> item.copy(position = position) })
+    }
+
+    /** Whether [itemUri] lives inside the folder [source] mirrors (both are NetworkUri strings). */
+    private fun isUnderFolder(itemUri: String, source: String): Boolean {
+        val base = source.substringBefore('?').trimEnd('/')
+        val path = itemUri.substringBefore('?')
+        return path == base || path.startsWith("$base/")
     }
 
     @Query("SELECT id FROM playlist WHERE type = 'LOCAL'")

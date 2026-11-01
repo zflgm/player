@@ -333,7 +333,8 @@ class NetworkBrowseViewModelTest {
 
             viewModel.onAction(NetworkBrowseAction.ShowSnapshotDialog)
             val ask = viewModel.state.value.snapshot as NetworkSnapshotState.Ask
-            assertEquals(listOf(9L), ask.targets.map { it.id })
+            // Hybrid lists: curated (LOCAL) and snapshot (NETWORK) targets both show up.
+            assertEquals(listOf(9L, 10L), ask.targets.map { it.id })
             assertNull(ask.targetId)
 
             viewModel.onAction(NetworkBrowseAction.SelectSnapshotTarget(9))
@@ -345,6 +346,34 @@ class NetworkBrowseViewModelTest {
             assertEquals(9L, playlists.appends.single().first)
             assertNull(viewModel.state.value.snapshot)
             assertEquals(listOf("string-${R.string.snapshot_items_added}".format(1)), systemService.toasts)
+        }
+
+    @Test
+    fun `adding a folder to a curated local playlist uses plain item adds`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val playlists = FakePlaylistRepository()
+            playlists.playlists.value = listOf(
+                PlaylistSummary(id = 10, name = "Local list", type = PlaylistType.LOCAL, itemCount = 5, lastRefreshedAt = null),
+            )
+            val scanner = FakeDirectoryScanner(listOf(NetworkFile("a.mp4", "/Series/a.mp4", false)))
+            val systemService = FakeSystemService()
+            val viewModel = viewModel(
+                path = "/Series",
+                playlistRepository = playlists,
+                directoryScanner = scanner,
+                systemService = systemService,
+            )
+            advanceUntilIdle()
+
+            viewModel.onAction(NetworkBrowseAction.ShowSnapshotDialog)
+            viewModel.onAction(NetworkBrowseAction.SelectSnapshotTarget(10))
+            viewModel.onAction(NetworkBrowseAction.CreateSnapshot(name = "ignored", recursive = true))
+            advanceUntilIdle()
+
+            assertTrue(playlists.creations.isEmpty())
+            assertTrue(playlists.appends.isEmpty())
+            assertEquals(10L, playlists.additions.single().first)
+            assertNull(viewModel.state.value.snapshot)
         }
 
     @Test
@@ -484,6 +513,7 @@ private class FakePlaylistRepository : PlaylistRepository {
     val playlists = MutableStateFlow<List<PlaylistSummary>>(emptyList())
     val creations = mutableListOf<Pair<String, String>>()
     val appends = mutableListOf<Pair<Long, List<String>>>()
+    val additions = mutableListOf<Pair<Long, List<String>>>()
     val deletions = mutableListOf<Long>()
 
     override fun observePlaylists(): Flow<List<PlaylistSummary>> = playlists
@@ -504,7 +534,17 @@ private class FakePlaylistRepository : PlaylistRepository {
 
     override fun observePlaylist(playlistId: Long): Flow<PlaylistRecord?> = error("Not used")
 
-    override suspend fun getPlaylist(playlistId: Long): PlaylistRecord? = error("Not used")
+    override suspend fun getPlaylist(playlistId: Long): PlaylistRecord? =
+        playlists.value.firstOrNull { it.id == playlistId }?.let { summary ->
+            PlaylistRecord(
+                id = summary.id,
+                name = summary.name,
+                type = summary.type,
+                source = null,
+                items = emptyList(),
+                lastRefreshedAt = summary.lastRefreshedAt,
+            )
+        }
 
     override suspend fun create(name: String, videoUris: List<String>): Long = error("Not used")
 
@@ -519,7 +559,10 @@ private class FakePlaylistRepository : PlaylistRepository {
 
     override suspend fun rename(playlistId: Long, name: String) = error("Not used")
 
-    override suspend fun addVideos(playlistId: Long, videoUris: List<String>): Int = error("Not used")
+    override suspend fun addVideos(playlistId: Long, videoUris: List<String>): Int {
+        additions += playlistId to videoUris
+        return videoUris.size
+    }
 
     override suspend fun removeVideo(playlistId: Long, videoUri: String) = error("Not used")
 

@@ -149,7 +149,11 @@ class NetworkBrowseViewModel(
         viewModelScope.launch {
             playlistRepository.observePlaylists()
                 .map { playlists ->
-                    playlists.filter { it.type == PlaylistType.NETWORK }
+                    // Hybrid lists: any locally curated list (or network snapshot) can receive a
+                    // folder's videos. M3U lists stay out — they are rewritten from their source.
+                    playlists.filter {
+                        it.type == PlaylistType.LOCAL || it.type == PlaylistType.NETWORK
+                    }
                         .map { NetworkPlaylistTarget(id = it.id, name = it.name, itemCount = it.itemCount) }
                 }
                 .collect { targets ->
@@ -298,6 +302,9 @@ class NetworkBrowseViewModel(
         snapshotJob = viewModelScope.launch {
             val source = NetworkUri.snapshotSource(conn, folderPath, recursive)
             val playlistId = targetId ?: playlistRepository.createNetworkSnapshot(name, source)
+            // Snapshots append through their scan entry point; curated lists take plain items.
+            val targetIsSnapshot = targetId != null &&
+                playlistRepository.getPlaylist(playlistId)?.type == PlaylistType.NETWORK
             var discovered = 0
             var added = 0
             var failure: Throwable? = null
@@ -306,10 +313,15 @@ class NetworkBrowseViewModel(
                     .chunked(SNAPSHOT_BATCH_SIZE)
                     .collect { batch ->
                         discovered += batch.size
-                        added += playlistRepository.appendNetworkSnapshotItems(
-                            playlistId = playlistId,
-                            videoUris = batch.map { file -> NetworkUri.build(conn, file.path).toString() },
-                        )
+                        val uris = batch.map { file -> NetworkUri.build(conn, file.path).toString() }
+                        added += if (targetIsSnapshot || targetId == null) {
+                            playlistRepository.appendNetworkSnapshotItems(
+                                playlistId = playlistId,
+                                videoUris = uris,
+                            )
+                        } else {
+                            playlistRepository.addVideos(playlistId, uris)
+                        }
                         stateInternal.update { it.copy(snapshot = NetworkSnapshotState.Building(discovered)) }
                     }
             } catch (cancellation: CancellationException) {

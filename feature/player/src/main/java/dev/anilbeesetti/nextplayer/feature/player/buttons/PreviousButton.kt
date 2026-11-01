@@ -26,6 +26,7 @@ internal fun PreviousButton(
     PlayerButton(
         modifier = modifier.size(64.dp),
         enabled = state.isEnabled,
+        containerColor = PlayerButtonBlackAlpha,
         onClick = {
             state.onClick()
             controlsVisibilityState?.showControls()

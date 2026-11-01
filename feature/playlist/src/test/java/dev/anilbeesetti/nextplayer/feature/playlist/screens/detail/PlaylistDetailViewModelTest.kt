@@ -305,6 +305,7 @@ class PlaylistDetailViewModelTest {
     ) = PlaylistDetailViewModel(
         observePlaylist = ObservePlaylistUseCase(repository, mediaRepository),
         playlistRepository = repository,
+        mediaRepository = mediaRepository,
         m3uParser = M3UParser(context, Dispatchers.Unconfined),
         networkConnectionRepository = FakeNetworkConnectionRepository(listOfNotNull(connection)),
         clientFactory = NetworkClientFactory { client },

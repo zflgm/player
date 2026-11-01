@@ -33,6 +33,7 @@ fun PlayPauseButton(
         modifier = modifier.size(64.dp),
         enabled = state.isEnabled,
         onClick = state::onClick,
+        containerColor = PlayerButtonBlackAlpha,
     ) {
         Icon(
             painter = icon,

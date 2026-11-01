@@ -22,6 +22,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.LineBreak
@@ -32,6 +33,7 @@ import dev.anilbeesetti.nextplayer.core.ui.R
 import dev.anilbeesetti.nextplayer.core.ui.extensions.copy
 import dev.anilbeesetti.nextplayer.core.ui.theme.NextPlayerTheme
 import dev.anilbeesetti.nextplayer.feature.player.buttons.PlayerButton
+import dev.anilbeesetti.nextplayer.feature.player.buttons.PlayerButtonBlackAlpha
 
 const val PLAYLIST_TEST_TAG = "openPlaylist"
 
@@ -60,16 +62,22 @@ fun ControlsTopView(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        PlayerButton(onClick = onBackClick) {
+        PlayerButton(
+            onClick = onBackClick,
+            containerColor = PlayerButtonBlackAlpha,
+        ) {
             Icon(
                 painter = painterResource(R.drawable.ic_arrow_left),
                 contentDescription = null,
             )
         }
         Column(modifier = Modifier.weight(1f)) {
+            // The video is no longer dimmed behind the controls, so the title carries its own
+            // shadow to stay readable on bright frames.
+            val titleShadow = Shadow(color = Color.Black.copy(alpha = 0.7f), blurRadius = 10f)
             Text(
                 text = title,
-                style = MaterialTheme.typography.titleMedium.copy(lineBreak = LineBreak.Heading),
+                style = MaterialTheme.typography.titleMedium.copy(lineBreak = LineBreak.Heading, shadow = titleShadow),
                 color = Color.White,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
@@ -79,7 +87,7 @@ fun ControlsTopView(
             if (queuePosition != null) {
                 Text(
                     text = queuePosition,
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.bodySmall.copy(shadow = titleShadow),
                     color = Color.White.copy(alpha = 0.7f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -92,6 +100,7 @@ fun ControlsTopView(
                 .testTag(PLAYLIST_TEST_TAG)
                 .focusRequester(firstControlFocusRequester),
             onClick = onPlaylistClick,
+            containerColor = PlayerButtonBlackAlpha,
         ) {
             Icon(
                 painter = painterResource(R.drawable.ic_playlist),

@@ -6,16 +6,21 @@ import androidx.core.net.toUri
 import androidx.lifecycle.viewModelScope
 import dev.anilbeesetti.nextplayer.core.common.service.system.SystemService
 import dev.anilbeesetti.nextplayer.core.data.playlist.M3UParser
+import dev.anilbeesetti.nextplayer.core.data.repository.MediaRepository
 import dev.anilbeesetti.nextplayer.core.data.repository.NetworkConnectionRepository
 import dev.anilbeesetti.nextplayer.core.data.repository.PlaylistRepository
 import dev.anilbeesetti.nextplayer.core.domain.ObservePlaylistUseCase
+import dev.anilbeesetti.nextplayer.core.media.network.NetworkClient
 import dev.anilbeesetti.nextplayer.core.media.network.NetworkClientFactory
 import dev.anilbeesetti.nextplayer.core.media.network.NetworkDirectoryScanner
 import dev.anilbeesetti.nextplayer.core.media.network.NetworkUri
 import dev.anilbeesetti.nextplayer.core.model.M3UPlaylist
+import dev.anilbeesetti.nextplayer.core.model.NetworkConnection
+import dev.anilbeesetti.nextplayer.core.model.NetworkFile
 import dev.anilbeesetti.nextplayer.core.model.Playlist
 import dev.anilbeesetti.nextplayer.core.model.PlaylistItem
 import dev.anilbeesetti.nextplayer.core.model.PlaylistType
+import dev.anilbeesetti.nextplayer.core.model.Video
 import dev.anilbeesetti.nextplayer.core.ui.R
 import dev.anilbeesetti.nextplayer.core.ui.base.ActionState
 import dev.anilbeesetti.nextplayer.core.ui.base.DataState
@@ -36,6 +41,7 @@ import org.koin.core.annotation.KoinViewModel
 class PlaylistDetailViewModel(
     observePlaylist: ObservePlaylistUseCase,
     private val playlistRepository: PlaylistRepository,
+    private val mediaRepository: MediaRepository,
     private val m3uParser: M3UParser,
     private val networkConnectionRepository: NetworkConnectionRepository,
     private val clientFactory: NetworkClientFactory,
@@ -58,6 +64,7 @@ class PlaylistDetailViewModel(
     override val state: StateFlow<PlaylistDetailUiState> = stateInternal.asStateFlow()
 
     private var refreshJob: Job? = null
+    private var addClient: NetworkClient? = null
 
     init {
         viewModelScope.launch {
@@ -70,6 +77,30 @@ class PlaylistDetailViewModel(
                             playlist.items.size > 1,
                     )
                 }
+            }
+        }
+        // Add-sheet sources: the local library grouped into folders, and saved connections.
+        viewModelScope.launch {
+            mediaRepository.observeVideos().collect { videos ->
+                stateInternal.update {
+                    it.copy(
+                        addFolders = videos.groupBy { video -> video.parentPath }
+                            .map { (parentPath, folderVideos) ->
+                                AddFolderEntry(
+                                    name = parentPath.trimEnd('/').substringAfterLast('/').ifBlank { parentPath },
+                                    path = parentPath,
+                                    videoUris = folderVideos.map { video -> video.uriString },
+                                )
+                            }
+                            .sortedBy { folder -> folder.name.lowercase() },
+                        addLocalVideos = videos.sortedBy { video -> video.displayName.lowercase() },
+                    )
+                }
+            }
+        }
+        viewModelScope.launch {
+            networkConnectionRepository.getConnections().collect { connections ->
+                stateInternal.update { it.copy(addConnections = connections) }
             }
         }
     }
@@ -107,6 +138,25 @@ class PlaylistDetailViewModel(
             }
             is PlaylistDetailUiAction.RemoveVideo -> removeVideo(action.videoUri)
             is PlaylistDetailUiAction.ReplaceOrder -> replaceOrder(action.orderedUris)
+            is PlaylistDetailUiAction.OnShowAddSheet -> stateInternal.update {
+                it.copy(showAddSheet = true, addSelection = emptySet())
+            }
+            is PlaylistDetailUiAction.OnDismissAddSheet -> {
+                closeAddClient()
+                stateInternal.update {
+                    it.copy(showAddSheet = false, addSelection = emptySet(), addBrowse = null)
+                }
+            }
+            is PlaylistDetailUiAction.OnAddTabChange -> stateInternal.update {
+                it.copy(addTab = action.tab)
+            }
+            is PlaylistDetailUiAction.OnToggleAddFolder -> toggleAddFolder(action.folder)
+            is PlaylistDetailUiAction.OnToggleAddVideo -> toggleAddVideo(action.uri)
+            is PlaylistDetailUiAction.OnConfirmAddLocal -> confirmAddLocal()
+            is PlaylistDetailUiAction.OnOpenAddConnection -> openAddConnection(action.connection)
+            is PlaylistDetailUiAction.OnAddBrowseUp -> addBrowseUp()
+            is PlaylistDetailUiAction.OnAddBrowseInto -> addBrowseInto(action.folder)
+            is PlaylistDetailUiAction.OnAddCurrentFolder -> addNetworkFolder()
         }
     }
 
@@ -256,6 +306,168 @@ class PlaylistDetailViewModel(
     private fun currentPlaylist(): Playlist? =
         (state.value.playlistDataState as? DataState.Success)?.value
 
+    // ----- add sheet: local library -----
+
+    private fun toggleAddFolder(folder: AddFolderEntry) {
+        stateInternal.update { state ->
+            val allSelected = folder.videoUris.all { it in state.addSelection }
+            val selection = if (allSelected) {
+                state.addSelection - folder.videoUris.toSet()
+            } else {
+                state.addSelection + folder.videoUris
+            }
+            state.copy(addSelection = selection)
+        }
+    }
+
+    private fun toggleAddVideo(uri: String) {
+        stateInternal.update { state ->
+            state.copy(
+                addSelection = if (uri in state.addSelection) state.addSelection - uri else state.addSelection + uri,
+            )
+        }
+    }
+
+    private fun confirmAddLocal() {
+        val uris = state.value.addSelection.toList()
+        if (uris.isEmpty()) return
+        updatePlaylist(
+            block = { playlistRepository.addVideos(input.playlistId, uris) },
+            onSuccess = {
+                closeAddClient()
+                stateInternal.update {
+                    it.copy(showAddSheet = false, addSelection = emptySet(), addBrowse = null)
+                }
+                showToast(systemService.getString(R.string.add_items_succeeded).format(uris.size))
+            },
+        )
+    }
+
+    // ----- add sheet: network folders -----
+
+    private fun openAddConnection(connection: NetworkConnection) {
+        closeAddClient()
+        stateInternal.update {
+            it.copy(
+                addBrowse = AddBrowseState(
+                    connectionId = connection.id,
+                    connectionName = connection.name,
+                    pathStack = listOf(""),
+                    folders = emptyList(),
+                    isLoading = true,
+                ),
+            )
+        }
+        viewModelScope.launch {
+            try {
+                val client = clientFactory.create(connection)
+                client.connect().getOrThrow()
+                addClient = client
+                addBrowseLoad(client)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (error: Throwable) {
+                stateInternal.update {
+                    it.copy(addBrowse = it.addBrowse?.copy(isLoading = false, error = error.message))
+                }
+            }
+        }
+    }
+
+    private fun addBrowseInto(folder: NetworkFile) {
+        val browse = state.value.addBrowse ?: return
+        val client = addClient ?: return
+        stateInternal.update {
+            it.copy(
+                addBrowse = browse.copy(
+                    pathStack = browse.pathStack + folder.path,
+                    folders = emptyList(),
+                    isLoading = true,
+                    error = null,
+                ),
+            )
+        }
+        viewModelScope.launch { addBrowseLoad(client) }
+    }
+
+    private fun addBrowseUp() {
+        val browse = state.value.addBrowse ?: return
+        val client = addClient ?: return
+        if (browse.pathStack.size <= 1) return
+        stateInternal.update {
+            it.copy(
+                addBrowse = browse.copy(
+                    pathStack = browse.pathStack.dropLast(1),
+                    folders = emptyList(),
+                    isLoading = true,
+                    error = null,
+                ),
+            )
+        }
+        viewModelScope.launch { addBrowseLoad(client) }
+    }
+
+    private suspend fun addBrowseLoad(client: NetworkClient) {
+        val path = state.value.addBrowse?.pathStack?.lastOrNull() ?: return
+        client.listFiles(path).fold(
+            onSuccess = { files ->
+                stateInternal.update {
+                    it.copy(
+                        addBrowse = it.addBrowse?.copy(
+                            folders = files.filter { file -> file.isDirectory }
+                                .sortedBy { file -> file.name.lowercase() },
+                            isLoading = false,
+                        ),
+                    )
+                }
+            },
+            onFailure = { error ->
+                stateInternal.update {
+                    it.copy(addBrowse = it.addBrowse?.copy(isLoading = false, error = error.message))
+                }
+            },
+        )
+    }
+
+    private fun addNetworkFolder() {
+        val browse = state.value.addBrowse ?: return
+        val client = addClient ?: return
+        val connection = state.value.addConnections.firstOrNull { it.id == browse.connectionId } ?: return
+        val folderPath = browse.pathStack.lastOrNull() ?: return
+        if (state.value.updateActionState.isRunning || state.value.isAddingItems) return
+        viewModelScope.launch {
+            stateInternal.update { it.copy(isAddingItems = true) }
+            try {
+                val uris = directoryScanner
+                    .scan(client, folderPath, recursive = true)
+                    .map { file -> NetworkUri.build(connection, file.path).toString() }
+                    .toList()
+                if (uris.isEmpty()) {
+                    showToast(systemService.getString(R.string.snapshot_scan_empty))
+                } else {
+                    playlistRepository.addVideos(input.playlistId, uris)
+                    closeAddClient()
+                    stateInternal.update {
+                        it.copy(showAddSheet = false, addSelection = emptySet(), addBrowse = null)
+                    }
+                    showToast(systemService.getString(R.string.add_items_succeeded).format(uris.size))
+                }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (error: Throwable) {
+                showToast(systemService.getString(R.string.playlist_update_failed))
+            } finally {
+                stateInternal.update { it.copy(isAddingItems = false) }
+            }
+        }
+    }
+
+    private fun closeAddClient() {
+        val client = addClient ?: return
+        addClient = null
+        viewModelScope.launch { runCatching { client.disconnect() } }
+    }
+
     private fun showToast(message: String) {
         systemService.showToast(message, Toast.LENGTH_SHORT)
     }
@@ -269,6 +481,32 @@ data class PlaylistDetailUiState(
     val searchQuery: String = "",
     val isReordering: Boolean = false,
     val showRemoveDialogFor: PlaylistItem? = null,
+    val showAddSheet: Boolean = false,
+    val addTab: AddSheetTab = AddSheetTab.LOCAL,
+    val addFolders: List<AddFolderEntry> = emptyList(),
+    val addLocalVideos: List<Video> = emptyList(),
+    val addSelection: Set<String> = emptySet(),
+    val addConnections: List<NetworkConnection> = emptyList(),
+    val addBrowse: AddBrowseState? = null,
+    val isAddingItems: Boolean = false,
+)
+
+enum class AddSheetTab { LOCAL, NETWORK }
+
+data class AddFolderEntry(
+    val name: String,
+    val path: String,
+    val videoUris: List<String>,
+)
+
+data class AddBrowseState(
+    val connectionId: Long,
+    val connectionName: String,
+    /** Stack of client paths, innermost last; the top level is the connection's root. */
+    val pathStack: List<String>,
+    val folders: List<NetworkFile> = emptyList(),
+    val isLoading: Boolean = false,
+    val error: String? = null,
 )
 
 sealed interface PlaylistDetailUiAction {
@@ -285,4 +523,14 @@ sealed interface PlaylistDetailUiAction {
     data object DismissRemoveDialog : PlaylistDetailUiAction
     data class RemoveVideo(val videoUri: String) : PlaylistDetailUiAction
     data class ReplaceOrder(val orderedUris: List<String>) : PlaylistDetailUiAction
+    data object OnShowAddSheet : PlaylistDetailUiAction
+    data object OnDismissAddSheet : PlaylistDetailUiAction
+    data class OnAddTabChange(val tab: AddSheetTab) : PlaylistDetailUiAction
+    data class OnToggleAddFolder(val folder: AddFolderEntry) : PlaylistDetailUiAction
+    data class OnToggleAddVideo(val uri: String) : PlaylistDetailUiAction
+    data object OnConfirmAddLocal : PlaylistDetailUiAction
+    data class OnOpenAddConnection(val connection: NetworkConnection) : PlaylistDetailUiAction
+    data object OnAddBrowseUp : PlaylistDetailUiAction
+    data class OnAddBrowseInto(val folder: NetworkFile) : PlaylistDetailUiAction
+    data object OnAddCurrentFolder : PlaylistDetailUiAction
 }

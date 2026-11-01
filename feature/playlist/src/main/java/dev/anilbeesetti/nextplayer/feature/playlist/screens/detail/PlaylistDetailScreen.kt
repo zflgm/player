@@ -99,6 +99,9 @@ fun PlaylistDetailScreen(
         state = state,
         onAction = viewModel::onAction,
     )
+    if (state.showAddSheet) {
+        PlaylistAddSheet(state = state, onAction = viewModel::onAction)
+    }
 }
 
 @Composable
@@ -215,6 +218,18 @@ internal fun PlaylistDetailScreenContent(
                                 )
                             }
                         } else {
+                            if (playlist?.isOrderEditable == true) {
+                                IconButton(
+                                    onClick = { onAction(PlaylistDetailUiAction.OnShowAddSheet) },
+                                    enabled = !state.updateActionState.isRunning,
+                                    modifier = Modifier.tvFocusRing(),
+                                ) {
+                                    Icon(
+                                        imageVector = NextIcons.PlaylistAdd,
+                                        contentDescription = stringResource(R.string.add_to_playlist),
+                                    )
+                                }
+                            }
                             if (playlist?.type != null && playlist.type != PlaylistType.LOCAL) {
                                 if (state.isRefreshing) {
                                     CircularProgressIndicator(
@@ -453,7 +468,11 @@ private fun PlaylistDetailContent(
         }
         Box(modifier = Modifier.weight(1f)) {
             if (displayedItems.isEmpty()) {
-                PlaylistEmptyState(Modifier.fillMaxSize())
+                PlaylistEmptyState(
+                    modifier = Modifier.fillMaxSize(),
+                    showAddButton = playlist?.isOrderEditable == true,
+                    onAddClick = { onAction(PlaylistDetailUiAction.OnShowAddSheet) },
+                )
             } else if (visibleItems.isEmpty()) {
                 PlaylistSearchEmptyState(Modifier.fillMaxSize())
             } else {
@@ -539,7 +558,7 @@ private fun PlaylistDetailContent(
                                 isLastItem = index == visibleItems.lastIndex,
                                 isTv = isTv,
                                 isReordering = isReordering,
-                                isEditable = playlist.type == PlaylistType.LOCAL,
+                                isEditable = playlist.isOrderEditable,
                                 actionsEnabled = actionsEnabled,
                                 onClick = onPlay,
                                 onRemove = {
@@ -721,7 +740,11 @@ private fun PlaylistVideoRow(
 }
 
 @Composable
-private fun PlaylistEmptyState(modifier: Modifier = Modifier) {
+private fun PlaylistEmptyState(
+    modifier: Modifier = Modifier,
+    showAddButton: Boolean = false,
+    onAddClick: () -> Unit = {},
+) {
     Column(
         modifier = modifier.padding(horizontal = 32.dp),
         verticalArrangement = Arrangement.Center,
@@ -740,6 +763,18 @@ private fun PlaylistEmptyState(modifier: Modifier = Modifier) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
         )
+        if (showAddButton) {
+            Spacer(Modifier.size(16.dp))
+            FilledTonalIconButton(
+                onClick = onAddClick,
+                modifier = Modifier.tvFocusRing(),
+            ) {
+                Icon(
+                    imageVector = NextIcons.PlaylistAdd,
+                    contentDescription = stringResource(R.string.add_to_playlist),
+                )
+            }
+        }
     }
 }
 

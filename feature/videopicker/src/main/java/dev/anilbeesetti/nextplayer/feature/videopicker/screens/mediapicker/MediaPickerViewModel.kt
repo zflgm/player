@@ -173,7 +173,9 @@ class MediaPickerViewModel(
                 stateInternal.update {
                     it.copy(
                         playlists = playlists.filter { playlist ->
-                            playlist.type == PlaylistType.LOCAL
+                            // Hybrid lists: curated and snapshot lists both accept added videos.
+                            // M3U lists stay out — they are rewritten from their source.
+                            playlist.type == PlaylistType.LOCAL || playlist.type == PlaylistType.NETWORK
                         },
                     )
                 }

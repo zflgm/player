@@ -97,12 +97,12 @@ class LocalPlaylistRepository(
     }
 
     override suspend fun addVideos(playlistId: Long, videoUris: List<String>): Int {
-        playlistDao.requireLocalPlaylist(playlistId)
+        playlistDao.requireEditablePlaylist(playlistId)
         return playlistDao.addItems(playlistId, videoUris.distinct())
     }
 
     override suspend fun removeVideo(playlistId: Long, videoUri: String) {
-        playlistDao.requireLocalPlaylist(playlistId)
+        playlistDao.requireEditablePlaylist(playlistId)
         playlistDao.removeItem(playlistId, videoUri)
     }
 
@@ -134,7 +134,7 @@ private fun String.validatedName(): String =
 private fun PlaylistSummaryEntity.toModel() = PlaylistSummary(
     id = id,
     name = name,
-    type = PlaylistType.valueOf(type),
+    type = PlaylistType.entries.firstOrNull { it.name == type } ?: PlaylistType.LOCAL,
     itemCount = itemCount,
     lastRefreshedAt = lastRefreshedAt,
 )
@@ -142,7 +142,7 @@ private fun PlaylistSummaryEntity.toModel() = PlaylistSummary(
 private fun PlaylistWithItems.toModel() = PlaylistRecord(
     id = playlist.id,
     name = playlist.name,
-    type = PlaylistType.valueOf(playlist.type),
+    type = PlaylistType.entries.firstOrNull { it.name == playlist.type } ?: PlaylistType.LOCAL,
     source = playlist.source,
     items = items.sortedBy { it.position }.map { item ->
         PlaylistItemRecord(

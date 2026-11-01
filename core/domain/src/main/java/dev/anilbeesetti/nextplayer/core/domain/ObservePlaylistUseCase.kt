@@ -25,7 +25,11 @@ class ObservePlaylistUseCase(
                 val videosByUri = videos.associateBy { video -> video.uriString }
                 val resolvedItems = record.items.mapNotNull { item ->
                     val video = videosByUri[item.uri]
-                    if (record.type == PlaylistType.LOCAL && video == null) return@mapNotNull null
+                    // Library rows whose file vanished stay hidden; network/stream rows have no
+                    // library entry at all and are kept — they display from their URI.
+                    if (record.type == PlaylistType.LOCAL && video == null && item.uri.startsWith("content://")) {
+                        return@mapNotNull null
+                    }
                     PlaylistItem(
                         position = item.position,
                         uri = item.uri,

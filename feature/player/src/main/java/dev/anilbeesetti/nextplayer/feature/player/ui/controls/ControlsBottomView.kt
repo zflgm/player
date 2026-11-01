@@ -226,6 +226,7 @@ fun ControlsBottomView(
                 PlayerButton(
                     modifier = Modifier.testTag(LOCK_CONTROLS_TEST_TAG),
                     onClick = onLockControlsClick,
+                    containerColor = PlayerButtonBlackAlpha,
                 ) {
                     Icon(
                         painter = painterResource(R.drawable.ic_lock_open),
@@ -237,6 +238,7 @@ fun ControlsBottomView(
                 PlayerButton(
                     modifier = Modifier.testTag(PICTURE_IN_PICTURE_TEST_TAG),
                     onClick = onPictureInPictureClick,
+                    containerColor = PlayerButtonBlackAlpha,
                 ) {
                     Icon(
                         painter = painterResource(R.drawable.ic_pip),
@@ -247,6 +249,7 @@ fun ControlsBottomView(
             PlayerButton(
                 modifier = Modifier.testTag(CONTENT_ROTATE_TEST_TAG),
                 onClick = onContentRotateClick,
+                containerColor = PlayerButtonBlackAlpha,
             ) {
                 Icon(
                     painter = painterResource(R.drawable.ic_rotate_half),
@@ -263,6 +266,7 @@ fun ControlsBottomView(
                     .testTag(DECODER_TEST_TAG)
                     .semantics { contentDescription = decoderDescription },
                 onClick = onDecoderClick,
+                containerColor = PlayerButtonBlackAlpha,
             ) {
                 Text(
                     text = stringResource((videoDecoderMode ?: DecoderMode.HARDWARE).labelRes),
@@ -273,6 +277,7 @@ fun ControlsBottomView(
             PlayerButton(
                 modifier = Modifier.testTag(AUDIO_TRACK_TEST_TAG),
                 onClick = onAudioClick,
+                containerColor = PlayerButtonBlackAlpha,
             ) {
                 Icon(
                     painter = painterResource(R.drawable.ic_audio_track),
@@ -282,6 +287,7 @@ fun ControlsBottomView(
             PlayerButton(
                 modifier = Modifier.testTag(SUBTITLE_TRACK_TEST_TAG),
                 onClick = onSubtitleClick,
+                containerColor = PlayerButtonBlackAlpha,
             ) {
                 Icon(
                     painter = painterResource(R.drawable.ic_subtitle_track),

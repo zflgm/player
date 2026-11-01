@@ -456,7 +456,7 @@
     <string name="play_all">全部播放</string>
     <string name="continue_playback">继续播放</string>
     <string name="remove_video_confirmation">从此播放列表移除“%1$s”吗？</string>
-    <string name="empty_playlist_description">在主页选择视频并选择“添加到播放列表”</string>
+    <string name="empty_playlist_description">点击下方按钮添加视频或文件夹</string>
     <string name="playlist_unavailable">此播放列表不再可用</string>
     <string name="no_matching_videos">没有匹配的视频</string>
     <string name="choose_playlist">选择播放列表</string>
@@ -550,4 +550,11 @@
     <plurals name="new_videos_count">
         <item quantity="other">%1$d 个新视频</item>
     </plurals>
+
+    <!-- Add-to-playlist sheet (playlist detail) -->
+    <string name="add_sheet_local_tab">本地媒体</string>
+    <string name="add_sheet_network_tab">网络文件夹</string>
+    <string name="add_selected_to_playlist">加入播放列表（%1$d）</string>
+    <string name="add_this_folder_recursive">添加此文件夹（含子文件夹）</string>
+    <string name="add_items_succeeded">已添加 %1$d 个视频</string>
 </resources>
