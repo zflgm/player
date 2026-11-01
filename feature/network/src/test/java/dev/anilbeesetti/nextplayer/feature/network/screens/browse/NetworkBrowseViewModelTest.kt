@@ -9,8 +9,11 @@ import dev.anilbeesetti.nextplayer.core.data.repository.fake.FakeMediaRepository
 import dev.anilbeesetti.nextplayer.core.data.repository.fake.FakePreferencesRepository
 import dev.anilbeesetti.nextplayer.core.media.network.NetworkClient
 import dev.anilbeesetti.nextplayer.core.media.network.NetworkClientFactory
+import dev.anilbeesetti.nextplayer.core.media.network.NetworkConnectionResolver
 import dev.anilbeesetti.nextplayer.core.media.network.NetworkDirectoryScanner
 import dev.anilbeesetti.nextplayer.core.media.network.NetworkUri
+import dev.anilbeesetti.nextplayer.core.media.network.ScanEvent
+import dev.anilbeesetti.nextplayer.core.media.network.datasource.NetworkSessions
 import dev.anilbeesetti.nextplayer.core.media.network.sftp.HostKeyMismatch
 import dev.anilbeesetti.nextplayer.core.model.M3UPlaylist
 import dev.anilbeesetti.nextplayer.core.model.M3UPlaylistItem
@@ -433,11 +436,15 @@ class NetworkBrowseViewModelTest {
     ): NetworkBrowseViewModel {
         val client = FakeNetworkClient(connectResult, files)
         val factory = NetworkClientFactory { client }
+        val sessions = NetworkSessions(
+            resolver = NetworkConnectionResolver { id -> if (id == conn.id) conn else null },
+            clientFactory = factory,
+        )
         return NetworkBrowseViewModel(
             input = NetworkBrowseViewModel.Input(connectionId = conn.id, path = path),
             output = NetworkBrowseViewModel.Output(navigateUp = {}, playVideos = onPlayVideos, openFolder = { _, _ -> }),
             repository = FakeRepository(conn, connectionDelayMillis),
-            clientFactory = factory,
+            networkSessions = sessions,
             playlistRepository = playlistRepository,
             directoryScanner = directoryScanner,
             systemService = systemService,
@@ -495,15 +502,17 @@ private class FakeDirectoryScanner(
     private val files: List<NetworkFile>,
     private val hangAfter: Int? = null,
     private val failure: Throwable? = null,
+    private val unreadableFolders: List<String> = emptyList(),
 ) : NetworkDirectoryScanner {
     val scans = mutableListOf<Pair<String, Boolean>>()
 
-    override fun scan(client: NetworkClient, rootPath: String, recursive: Boolean): Flow<NetworkFile> = flow {
+    override fun scan(client: NetworkClient, rootPath: String, recursive: Boolean): Flow<ScanEvent> = flow {
         scans += rootPath to recursive
         files.forEachIndexed { index, file ->
-            emit(file)
+            emit(ScanEvent.Video(file))
             if (hangAfter != null && index + 1 == hangAfter) delay(Long.MAX_VALUE)
         }
+        unreadableFolders.forEach { emit(ScanEvent.FolderUnreadable(it)) }
         failure?.let { throw it }
     }
 }

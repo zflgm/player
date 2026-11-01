@@ -6,6 +6,8 @@ import dev.anilbeesetti.nextplayer.core.model.NetworkConnection
 import dev.anilbeesetti.nextplayer.core.model.NetworkFile
 import java.io.InputStream
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.apache.commons.net.ftp.FTP
 import org.apache.commons.net.ftp.FTPClient
@@ -20,6 +22,9 @@ import kotlin.time.toJavaDuration
 class FtpClient(private val connection: NetworkConnection) : NetworkClient {
 
     private var ftpClient: FTPClient? = null
+
+    /** One FTP control connection is not reentrant; the pool now shares it across screens. */
+    private val browseLock = Mutex()
 
     override val rootPath: String = connection.path
         .trim()
@@ -78,7 +83,11 @@ class FtpClient(private val connection: NetworkConnection) : NetworkClient {
 
     override fun isConnected(): Boolean = ftpClient?.isConnected == true
 
-    override suspend fun listFiles(path: String): Result<List<NetworkFile>> = withContext(Dispatchers.IO) {
+    override suspend fun listFiles(path: String): Result<List<NetworkFile>> = browseLock.withLock {
+        listFilesUnlocked(path)
+    }
+
+    private suspend fun listFilesUnlocked(path: String): Result<List<NetworkFile>> = withContext(Dispatchers.IO) {
         runCatching {
             val client = ftpClient ?: error("Not connected")
             val dir = path.ifBlank { rootPath }
@@ -99,7 +108,11 @@ class FtpClient(private val connection: NetworkConnection) : NetworkClient {
         }
     }
 
-    override suspend fun fileSize(path: String): Long = withContext(Dispatchers.IO) {
+    override suspend fun fileSize(path: String): Long = browseLock.withLock {
+        fileSizeUnlocked(path)
+    }
+
+    private suspend fun fileSizeUnlocked(path: String): Long = withContext(Dispatchers.IO) {
         runCatching {
             val client = ftpClient ?: error("Not connected")
             // `SIZE` (RFC 3659) is a single round-trip and works in binary mode. Listing the file

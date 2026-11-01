@@ -10,9 +10,10 @@ import dev.anilbeesetti.nextplayer.core.data.repository.NetworkConnectionReposit
 import dev.anilbeesetti.nextplayer.core.data.repository.PlaylistRepository
 import dev.anilbeesetti.nextplayer.core.data.repository.PreferencesRepository
 import dev.anilbeesetti.nextplayer.core.media.network.NetworkClient
-import dev.anilbeesetti.nextplayer.core.media.network.NetworkClientFactory
 import dev.anilbeesetti.nextplayer.core.media.network.NetworkDirectoryScanner
 import dev.anilbeesetti.nextplayer.core.media.network.NetworkUri
+import dev.anilbeesetti.nextplayer.core.media.network.ScanEvent
+import dev.anilbeesetti.nextplayer.core.media.network.datasource.NetworkSessions
 import dev.anilbeesetti.nextplayer.core.media.network.isNetworkVideoFile
 import dev.anilbeesetti.nextplayer.core.media.network.sftp.HostKeyMismatch
 import dev.anilbeesetti.nextplayer.core.model.ApplicationPreferences
@@ -23,14 +24,11 @@ import dev.anilbeesetti.nextplayer.core.model.Video
 import dev.anilbeesetti.nextplayer.core.ui.R
 import dev.anilbeesetti.nextplayer.core.ui.base.MviViewModel
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.chunked
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
@@ -88,7 +86,7 @@ class NetworkBrowseViewModel(
     @InjectedParam private val input: Input,
     @InjectedParam internal var output: Output,
     private val repository: NetworkConnectionRepository,
-    private val clientFactory: NetworkClientFactory,
+    private val networkSessions: NetworkSessions,
     private val playlistRepository: PlaylistRepository,
     private val directoryScanner: NetworkDirectoryScanner,
     private val systemService: SystemService,
@@ -181,7 +179,16 @@ class NetworkBrowseViewModel(
                 }
                 return@launch
             }
-            val activeClient = client ?: clientFactory.create(conn).also { client = it }
+            // The pool connects eagerly and throws on failure; map it like the direct connect
+            // below so host-key and availability errors keep their friendly forms.
+            val activeClient = try {
+                client ?: networkSessions.browseClient(conn).also { client = it }
+            } catch (error: Throwable) {
+                stateInternal.update {
+                    it.copy(isLoading = false, error = error.toNetworkBrowseError())
+                }
+                return@launch
+            }
             if (currentPath == null) currentPath = activeClient.rootPath
             connection.value = conn
             if (!activeClient.isConnected()) {
@@ -308,22 +315,38 @@ class NetworkBrowseViewModel(
             var discovered = 0
             var added = 0
             var failure: Throwable? = null
+            val unreadableFolders = mutableListOf<String>()
+            val batch = mutableListOf<String>()
+            suspend fun flushBatch() {
+                if (batch.isEmpty()) return
+                val uris = batch.toList()
+                batch.clear()
+                added += if (targetIsSnapshot || targetId == null) {
+                    playlistRepository.appendNetworkSnapshotItems(
+                        playlistId = playlistId,
+                        videoUris = uris,
+                    )
+                } else {
+                    playlistRepository.addVideos(playlistId, uris)
+                }
+            }
             try {
                 directoryScanner.scan(client, folderPath, recursive)
-                    .chunked(SNAPSHOT_BATCH_SIZE)
-                    .collect { batch ->
-                        discovered += batch.size
-                        val uris = batch.map { file -> NetworkUri.build(conn, file.path).toString() }
-                        added += if (targetIsSnapshot || targetId == null) {
-                            playlistRepository.appendNetworkSnapshotItems(
-                                playlistId = playlistId,
-                                videoUris = uris,
-                            )
-                        } else {
-                            playlistRepository.addVideos(playlistId, uris)
+                    .collect { event ->
+                        when (event) {
+                            is ScanEvent.Video -> {
+                                batch += NetworkUri.build(conn, event.file.path).toString()
+                                discovered++
+                                if (batch.size >= SNAPSHOT_BATCH_SIZE) {
+                                    flushBatch()
+                                    stateInternal.update { it.copy(snapshot = NetworkSnapshotState.Building(discovered)) }
+                                }
+                            }
+
+                            is ScanEvent.FolderUnreadable -> unreadableFolders += event.path
                         }
-                        stateInternal.update { it.copy(snapshot = NetworkSnapshotState.Building(discovered)) }
                     }
+                flushBatch()
             } catch (cancellation: CancellationException) {
                 if (createdNew) withContext(NonCancellable) { playlistRepository.delete(playlistId) }
                 throw cancellation
@@ -332,17 +355,18 @@ class NetworkBrowseViewModel(
                 if (createdNew) withContext(NonCancellable) { playlistRepository.delete(playlistId) }
             }
             // A folder with nothing in it is not worth an empty playlist, nor a silent no-op.
-            val emptyResult = failure == null && discovered == 0
+            // Unreadable folders are not "empty" — say so instead of claiming the scan was clean.
+            val emptyResult = failure == null && discovered == 0 && unreadableFolders.isEmpty()
             if (emptyResult && createdNew) playlistRepository.delete(playlistId)
             val reopened = ask ?: NetworkSnapshotState.Ask(suggestedName = folderPath)
             stateInternal.update {
                 it.copy(
-                    snapshot = if (failure == null && !emptyResult) {
+                    snapshot = if (failure == null && discovered > 0) {
                         null
                     } else {
                         reopened.copy(
                             recursive = recursive,
-                            failed = failure != null,
+                            failed = failure != null || unreadableFolders.isNotEmpty(),
                             emptyResult = emptyResult,
                             targets = networkTargets.value,
                         )
@@ -360,6 +384,12 @@ class NetworkBrowseViewModel(
                 systemService.getString(messageRes).format(if (createdNew) discovered else added),
                 Toast.LENGTH_SHORT,
             )
+            if (failure == null && unreadableFolders.isNotEmpty()) {
+                systemService.showToast(
+                    systemService.getString(R.string.snapshot_scan_partial).format(unreadableFolders.size),
+                    Toast.LENGTH_LONG,
+                )
+            }
         }
     }
 
@@ -375,9 +405,8 @@ class NetworkBrowseViewModel(
     }
 
     override fun onCleared() {
-        val client = client ?: return
-        // Best-effort disconnect on a detached IO scope, since viewModelScope is already cancelled.
-        CoroutineScope(Dispatchers.IO).launch { runCatching { client.disconnect() } }
+        // The pooled client stays connected for the other screens (and playback) sharing it;
+        // the pool evicts it under LRU pressure or when the player service shuts down.
     }
 }
 

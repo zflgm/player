@@ -20,12 +20,13 @@ class NetworkTarget(
 )
 
 /**
- * Keeps the connected [NetworkClient] for the connection currently being played.
+ * The shared pool of connected [NetworkClient]s — one per connection, reused by both the browse
+ * screens and the player.
  *
- * Only one network item plays at a time, so switching connections disconnects the previous client
- * instead of accumulating them. A single client is shared by every [NetworkDataSource] opened for
- * that connection — the player opens a fresh source on each seek, and each one asks the client for
- * its own stream at an offset.
+ * Previously every browse destination kept its own client, so walking five folders deep held five
+ * NAS sessions open (and servers start refusing at their session cap), plus a separate one for
+ * playback. The pool caps that at [MAX_POOLED_CONNECTIONS]; the least recently used client is
+ * disconnected when a new one pushes past the cap. Clients reconnect on demand if a session died.
  */
 @Single
 class NetworkSessions(
@@ -33,20 +34,31 @@ class NetworkSessions(
     private val clientFactory: NetworkClientFactory,
 ) {
     private val mutex = Mutex()
-    private var connection: NetworkConnection? = null
-    private var client: NetworkClient? = null
 
-    /** Resolves [uri] to a connected client, reusing the current one when it already fits. */
+    /** Access-ordered LRU keyed by connection id; eviction disconnects the dropped client. */
+    private val clients = object : LinkedHashMap<Long, NetworkClient>(4, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Long, NetworkClient>): Boolean {
+            if (size <= MAX_POOLED_CONNECTIONS) return false
+            disconnectDetached(eldest.value)
+            return true
+        }
+    }
+
+    /** Resolves [uri] to a connected client, reusing the pooled one for its connection. */
     suspend fun target(uri: Uri): NetworkTarget = mutex.withLock {
         val target = resolve(uri)
         NetworkTarget(clientFor(target.connection), target.filePath)
     }
 
-    /** Disconnects the active client. The cache stays usable — the next [target] reconnects. */
+    /** The shared, connected client for [connection] — the same pool the player reads through. */
+    suspend fun browseClient(connection: NetworkConnection): NetworkClient = mutex.withLock {
+        clientFor(connection)
+    }
+
+    /** Disconnects every pooled client. The pool stays usable — the next request reconnects. */
     suspend fun release() = mutex.withLock {
-        client?.let(::disconnectDetached)
-        connection = null
-        client = null
+        clients.values.forEach(::disconnectDetached)
+        clients.clear()
     }
 
     private suspend fun resolve(uri: Uri): NetworkUri.Target {
@@ -59,22 +71,23 @@ class NetworkSessions(
         return NetworkUri.Target(saved, NetworkUri.filePathOf(uri, saved.protocol))
     }
 
-    private suspend fun clientFor(target: NetworkConnection): NetworkClient {
-        client?.takeIf { connection == target }?.let { existing ->
+    private suspend fun clientFor(connection: NetworkConnection): NetworkClient {
+        clients[connection.id]?.let { existing ->
             if (!existing.isConnected()) existing.connect().getOrThrow()
             return existing
         }
 
-        val fresh = clientFactory.create(target)
+        val fresh = clientFactory.create(connection)
         fresh.connect().getOrThrow()
-
-        client?.let(::disconnectDetached)
-        connection = target
-        client = fresh
+        clients[connection.id] = fresh
         return fresh
     }
 
     private fun disconnectDetached(client: NetworkClient) {
         CoroutineScope(Dispatchers.IO).launch { runCatching { client.disconnect() } }
+    }
+
+    private companion object {
+        const val MAX_POOLED_CONNECTIONS = 3
     }
 }

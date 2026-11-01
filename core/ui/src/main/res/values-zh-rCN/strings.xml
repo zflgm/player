@@ -557,4 +557,5 @@
     <string name="add_selected_to_playlist">加入播放列表（%1$d）</string>
     <string name="add_this_folder_recursive">添加此文件夹（含子文件夹）</string>
     <string name="add_items_succeeded">已添加 %1$d 个视频</string>
+    <string name="snapshot_scan_partial">%1$d 个文件夹不可读，已跳过</string>
 </resources>

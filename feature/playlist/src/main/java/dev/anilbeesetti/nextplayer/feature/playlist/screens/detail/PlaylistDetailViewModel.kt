@@ -14,6 +14,7 @@ import dev.anilbeesetti.nextplayer.core.media.network.NetworkClient
 import dev.anilbeesetti.nextplayer.core.media.network.NetworkClientFactory
 import dev.anilbeesetti.nextplayer.core.media.network.NetworkDirectoryScanner
 import dev.anilbeesetti.nextplayer.core.media.network.NetworkUri
+import dev.anilbeesetti.nextplayer.core.media.network.ScanEvent
 import dev.anilbeesetti.nextplayer.core.model.M3UPlaylist
 import dev.anilbeesetti.nextplayer.core.model.NetworkConnection
 import dev.anilbeesetti.nextplayer.core.model.NetworkFile
@@ -30,8 +31,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.koin.core.annotation.InjectedParam
@@ -217,11 +216,33 @@ class PlaylistDetailViewModel(
         try {
             client.connect().getOrThrow()
             val rootPath = NetworkUri.filePathOf(source, connection.protocol)
-            val discovered = directoryScanner
+            val discovered = mutableListOf<String>()
+            val unreadableFolders = mutableListOf<String>()
+            directoryScanner
                 .scan(client, rootPath, NetworkUri.isRecursiveSnapshot(source))
-                .map { file -> NetworkUri.build(connection, file.path).toString() }
-                .toList()
-            val diff = playlistRepository.refreshNetworkSnapshot(input.playlistId, discovered)
+                .collect { event ->
+                    when (event) {
+                        is ScanEvent.Video ->
+                            discovered += NetworkUri.build(connection, event.file.path).toString()
+
+                        is ScanEvent.FolderUnreadable -> unreadableFolders += event.path
+                    }
+                }
+            // Rows inside folders that could not be listed stay: an unreadable folder says nothing
+            // about the files in it, and reconciling against a partial scan would delete them.
+            val preserved = playlist.items
+                .map { it.uri }
+                .filter { uri ->
+                    unreadableFolders.any { folder ->
+                        uri.isUnderFolderUri(NetworkUri.build(connection, folder).toString())
+                    }
+                }
+            val diff = playlistRepository.refreshNetworkSnapshot(input.playlistId, discovered + preserved)
+            if (unreadableFolders.isNotEmpty()) {
+                showToast(
+                    systemService.getString(R.string.snapshot_scan_partial).format(unreadableFolders.size),
+                )
+            }
             showToast(
                 if (diff.added == 0 && diff.removed == 0) {
                     systemService.getString(R.string.snapshot_refresh_unchanged)
@@ -438,10 +459,18 @@ class PlaylistDetailViewModel(
         viewModelScope.launch {
             stateInternal.update { it.copy(isAddingItems = true) }
             try {
-                val uris = directoryScanner
+                val uris = mutableListOf<String>()
+                var unreadable = 0
+                directoryScanner
                     .scan(client, folderPath, recursive = true)
-                    .map { file -> NetworkUri.build(connection, file.path).toString() }
-                    .toList()
+                    .collect { event ->
+                        when (event) {
+                            is ScanEvent.Video ->
+                                uris += NetworkUri.build(connection, event.file.path).toString()
+
+                            is ScanEvent.FolderUnreadable -> unreadable++
+                        }
+                    }
                 if (uris.isEmpty()) {
                     showToast(systemService.getString(R.string.snapshot_scan_empty))
                 } else {
@@ -451,6 +480,9 @@ class PlaylistDetailViewModel(
                         it.copy(showAddSheet = false, addSelection = emptySet(), addBrowse = null)
                     }
                     showToast(systemService.getString(R.string.add_items_succeeded).format(uris.size))
+                }
+                if (unreadable > 0) {
+                    showToast(systemService.getString(R.string.snapshot_scan_partial).format(unreadable))
                 }
             } catch (cancellation: CancellationException) {
                 throw cancellation
@@ -466,6 +498,13 @@ class PlaylistDetailViewModel(
         val client = addClient ?: return
         addClient = null
         viewModelScope.launch { runCatching { client.disconnect() } }
+    }
+
+    /** Whether this uri lives inside the folder [folderUri] (both NetworkUri strings). */
+    private fun String.isUnderFolderUri(folderUri: String): Boolean {
+        val base = folderUri.substringBefore('?').trimEnd('/')
+        val path = substringBefore('?')
+        return path == base || path.startsWith("$base/")
     }
 
     private fun showToast(message: String) {

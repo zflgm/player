@@ -13,6 +13,8 @@ import dev.anilbeesetti.nextplayer.core.model.NetworkFile
 import java.io.InputStream
 import java.util.EnumSet
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import net.schmizz.sshj.SSHClient
 import net.schmizz.sshj.sftp.OpenMode
@@ -25,6 +27,9 @@ class SftpClient(
 
     private var sshClient: SSHClient? = null
     private var sftpClient: SFTPClient? = null
+
+    /** One SFTP session is not reentrant; the pool now shares it across screens. */
+    private val browseLock = Mutex()
 
     override val rootPath: String = connection.path
         .trim()
@@ -60,7 +65,11 @@ class SftpClient(
     override fun isConnected(): Boolean =
         sftpClient != null && sshClient?.isConnected == true && sshClient?.isAuthenticated == true
 
-    override suspend fun listFiles(path: String): Result<List<NetworkFile>> = withContext(Dispatchers.IO) {
+    override suspend fun listFiles(path: String): Result<List<NetworkFile>> = browseLock.withLock {
+        listFilesUnlocked(path)
+    }
+
+    private suspend fun listFilesUnlocked(path: String): Result<List<NetworkFile>> = withContext(Dispatchers.IO) {
         runCatching {
             val client = sftpClient ?: error("Not connected")
             val directory = path.ifBlank { rootPath }
@@ -77,7 +86,11 @@ class SftpClient(
         }
     }
 
-    override suspend fun fileSize(path: String): Long = withContext(Dispatchers.IO) {
+    override suspend fun fileSize(path: String): Long = browseLock.withLock {
+        fileSizeUnlocked(path)
+    }
+
+    private suspend fun fileSizeUnlocked(path: String): Long = withContext(Dispatchers.IO) {
         runCatching {
             val client = sftpClient ?: error("Not connected")
             client.stat(path).size

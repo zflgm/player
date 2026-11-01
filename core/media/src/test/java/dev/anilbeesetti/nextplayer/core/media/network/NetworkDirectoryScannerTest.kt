@@ -22,7 +22,7 @@ class NetworkDirectoryScannerTest {
 
         val discovered = DefaultNetworkDirectoryScanner().scan(client, "/", recursive = false).toList()
 
-        assertEquals(listOf("/a.mp4", "/B.mkv"), discovered.map { it.path })
+        assertEquals(listOf("/a.mp4", "/B.mkv"), discovered.videoPaths())
         assertEquals(listOf("/"), client.requested)
     }
 
@@ -51,7 +51,7 @@ class NetworkDirectoryScannerTest {
                 "/Series/Season 2/Episode 2.mp4",
                 "/Series/Season 2/Raw/raw.MKV",
             ),
-            discovered.map { it.path },
+            discovered.videoPaths(),
         )
         assertEquals(
             listOf("/Series", "/Series/Extras", "/Series/Season 2", "/Series/Season 2/Raw"),
@@ -60,7 +60,7 @@ class NetworkDirectoryScannerTest {
     }
 
     @Test
-    fun `unreadable subfolders are skipped without aborting the scan`() = runTest {
+    fun `unreadable subfolders are reported instead of silently skipped`() = runTest {
         val client = FakeClient(
             "/Movies" to listOf(
                 folder("Private", "/Movies/Private"),
@@ -73,7 +73,9 @@ class NetworkDirectoryScannerTest {
 
         val discovered = DefaultNetworkDirectoryScanner().scan(client, "/Movies", recursive = true).toList()
 
-        assertEquals(listOf("/Movies/Movie.mp4", "/Movies/Public/Other.mp4"), discovered.map { it.path })
+        assertEquals(listOf("/Movies/Movie.mp4", "/Movies/Public/Other.mp4"), discovered.videoPaths())
+        // The failure is surfaced so snapshot refreshes can keep rows the scan never saw.
+        assertEquals(listOf("/Movies/Private"), discovered.unreadableFolders())
     }
 
     @Test
@@ -91,9 +93,15 @@ class NetworkDirectoryScannerTest {
 
         val discovered = DefaultNetworkDirectoryScanner().scan(client, "/Library", recursive = true).toList()
 
-        assertEquals(listOf("/Library/Films/A.mp4"), discovered.map { it.path })
+        assertEquals(listOf("/Library/Films/A.mp4"), discovered.videoPaths())
         assertEquals(listOf("/Library", "/Library/Films"), client.requested)
     }
+
+    private fun List<ScanEvent>.videoPaths(): List<String> =
+        filterIsInstance<ScanEvent.Video>().map { it.file.path }
+
+    private fun List<ScanEvent>.unreadableFolders(): List<String> =
+        filterIsInstance<ScanEvent.FolderUnreadable>().map { it.path }
 
     private fun file(name: String, path: String) = NetworkFile(name, path, isDirectory = false)
 
