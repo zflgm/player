@@ -1,6 +1,6 @@
 package dev.anilbeesetti.nextplayer.core.media.network.datasource
 
-import androidx.core.net.toUri
+import android.net.Uri
 import androidx.media3.common.C
 import androidx.media3.datasource.DataSpec
 import dev.anilbeesetti.nextplayer.core.media.network.NetworkClient
@@ -135,6 +135,6 @@ class NetworkDataSourceTest {
             protocol = NetworkProtocol.SMB,
             host = "192.168.1.10",
         )
-        val PLAYBACK_URI = NetworkUri.build(CONNECTION, "Movies/ep.mkv").toUri()
+        val PLAYBACK_URI: Uri = NetworkUri.build(CONNECTION, "Movies/ep.mkv")
     }
 }

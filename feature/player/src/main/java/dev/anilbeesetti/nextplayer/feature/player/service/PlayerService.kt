@@ -715,12 +715,15 @@ class PlayerService : MediaSessionService() {
         val player = ExoPlayer.Builder(applicationContext)
             .setRenderersFactory(renderersFactory)
             .setTrackSelector(trackSelector)
-            // Network playback must survive transient drops: retry loads instead of failing the
-            // whole item the first time a chunk fetch fails.
-            .setLoadErrorHandlingPolicy(DefaultLoadErrorHandlingPolicy(MINIMUM_LOADABLE_RETRY_COUNT))
             .setMediaSourceFactory(
                 ExternalAudioMediaSourceFactory(
-                    DefaultMediaSourceFactory(applicationContext).setDataSourceFactory(dataSourceFactory),
+                    // Network playback must survive transient drops: retry loads instead of
+                    // failing the whole item the first time a chunk fetch fails.
+                    DefaultMediaSourceFactory(applicationContext)
+                        .setDataSourceFactory(dataSourceFactory)
+                        .setLoadErrorHandlingPolicy(
+                            DefaultLoadErrorHandlingPolicy(MINIMUM_LOADABLE_RETRY_COUNT),
+                        ),
                 ),
             )
             .setAudioAttributes(
