@@ -7,7 +7,7 @@ plugins {
 }
 
 android {
-    namespace = "dev.anilbeesetti.nextplayer.core.datastore"
+    namespace = "com.zflgm.player.core.datastore"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
 
     defaultConfig {

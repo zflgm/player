@@ -25,7 +25,7 @@ providers.gradleProperty("nextlibPath").orNull?.let { nextlibPath ->
     }
 }
 
-rootProject.name = "NextPlayer"
+rootProject.name = "Player"
 include(":app")
 include(":core:common")
 include(":core:data")

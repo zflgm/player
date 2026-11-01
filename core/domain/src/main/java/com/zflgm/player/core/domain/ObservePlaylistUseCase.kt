@@ -1,0 +1,56 @@
+package com.zflgm.player.core.domain
+
+import com.zflgm.player.core.data.repository.MediaRepository
+import com.zflgm.player.core.data.repository.PlaylistRepository
+import com.zflgm.player.core.model.Playlist
+import com.zflgm.player.core.model.PlaylistItem
+import com.zflgm.player.core.model.PlaylistType
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import org.koin.core.annotation.Factory
+
+@Factory
+class ObservePlaylistUseCase(
+    private val playlistRepository: PlaylistRepository,
+    private val mediaRepository: MediaRepository,
+) {
+
+    operator fun invoke(playlistId: Long): Flow<Playlist?> =
+        combine(
+            playlistRepository.observePlaylist(playlistId),
+            mediaRepository.observeVideos(),
+        ) { record, videos ->
+            record?.let {
+                val videosByUri = videos.associateBy { video -> video.uriString }
+                val resolvedItems = record.items.mapNotNull { item ->
+                    val video = videosByUri[item.uri]
+                    // Library rows whose file vanished stay hidden; network/stream rows have no
+                    // library entry at all and are kept — they display from their URI.
+                    if (record.type == PlaylistType.LOCAL && video == null && item.uri.startsWith("content://")) {
+                        return@mapNotNull null
+                    }
+                    PlaylistItem(
+                        position = item.position,
+                        uri = item.uri,
+                        title = item.title,
+                        tvgLogo = item.tvgLogo,
+                        duration = item.duration,
+                        groupTitle = item.groupTitle,
+                        video = video,
+                        lastPlayedAt = item.lastPlayedAt,
+                    )
+                }
+                Playlist(
+                    id = record.id,
+                    name = record.name,
+                    type = record.type,
+                    source = record.source,
+                    items = resolvedItems.mapIndexed { position, item ->
+                        item.copy(position = position)
+                    },
+                    lastRefreshedAt = record.lastRefreshedAt,
+                )
+            }
+        }.distinctUntilChanged()
+}

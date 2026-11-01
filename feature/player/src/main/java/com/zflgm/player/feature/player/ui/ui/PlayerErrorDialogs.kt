@@ -1,0 +1,101 @@
+package com.zflgm.player.feature.player.ui
+
+import androidx.compose.foundation.layout.Row
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
+import androidx.media3.common.PlaybackException
+import com.zflgm.player.core.ui.R as coreUiR
+import com.zflgm.player.feature.player.model.DecoderRecoveryState
+import com.zflgm.player.feature.player.model.DecoderRecoveryStatus
+import com.zflgm.player.feature.player.model.DecoderTrackType
+import com.zflgm.player.feature.player.model.labelRes
+
+@Composable
+internal fun PlayerErrorDialogs(
+    decoderRecoveryState: DecoderRecoveryState,
+    playbackError: PlaybackException?,
+    hasNextMediaItem: Boolean,
+    onTryDecoderFallback: () -> Unit,
+    onRetry: () -> Unit,
+    onPlayNextVideo: () -> Unit,
+    onExit: () -> Unit,
+) {
+    val unsupportedMode = decoderRecoveryState.unsupportedMode
+    val recoveryTrackType = decoderRecoveryState.trackType
+    if (
+        decoderRecoveryState.status == DecoderRecoveryStatus.AWAITING_CONFIRMATION &&
+        unsupportedMode != null &&
+        recoveryTrackType != null
+    ) {
+        AlertDialog(
+            onDismissRequest = { },
+            title = {
+                Text(text = stringResource(coreUiR.string.decoder))
+            },
+            text = {
+                Text(
+                    text = stringResource(
+                        when (recoveryTrackType) {
+                            DecoderTrackType.VIDEO -> coreUiR.string.video_decoder_mode_not_supported
+                            DecoderTrackType.AUDIO -> coreUiR.string.audio_decoder_mode_not_supported
+                        },
+                        stringResource(unsupportedMode.labelRes),
+                    ),
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = onTryDecoderFallback) {
+                    Text(text = stringResource(coreUiR.string.okay))
+                }
+            },
+        )
+    }
+
+    val allDecoderModesFailed = decoderRecoveryState.status == DecoderRecoveryStatus.FAILED
+    val showPlayerError = allDecoderModesFailed ||
+        (
+            decoderRecoveryState.status == DecoderRecoveryStatus.NONE &&
+                playbackError != null
+            )
+    if (showPlayerError) {
+        AlertDialog(
+            onDismissRequest = { },
+            title = {
+                Text(text = stringResource(coreUiR.string.error_playing_video))
+            },
+            text = {
+                Text(
+                    text = playbackError?.message
+                        ?: stringResource(
+                            if (allDecoderModesFailed) {
+                                coreUiR.string.no_supported_decoder
+                            } else {
+                                coreUiR.string.unknown_error
+                            },
+                        ),
+                )
+            },
+            confirmButton = {
+                Row {
+                    // Network errors are often transient; retrying is the first thing to try.
+                    TextButton(onClick = onRetry) {
+                        Text(text = stringResource(coreUiR.string.retry))
+                    }
+                    if (hasNextMediaItem) {
+                        TextButton(onClick = onPlayNextVideo) {
+                            Text(text = stringResource(coreUiR.string.play_next_video))
+                        }
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = onExit) {
+                    Text(text = stringResource(coreUiR.string.exit))
+                }
+            },
+        )
+    }
+}

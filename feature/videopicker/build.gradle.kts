@@ -8,7 +8,7 @@ plugins {
 }
 
 android {
-    namespace = "dev.anilbeesetti.nextplayer.feature.videopicker"
+    namespace = "com.zflgm.player.feature.videopicker"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
 
     defaultConfig {

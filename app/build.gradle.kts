@@ -9,15 +9,15 @@ plugins {
 }
 
 android {
-    namespace = "dev.anilbeesetti.nextplayer"
+    namespace = "com.zflgm.player"
 
     compileSdk = libs.versions.android.compileSdk.get().toInt()
     defaultConfig {
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
-        applicationId = "dev.anilbeesetti.nextplayer"
-        versionCode = 74
-        versionName = "0.18.0"
+        applicationId = "com.zflgm.player"
+        versionCode = 1
+        versionName = "1.0.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -44,7 +44,7 @@ android {
             keyAlias = "androiddebugkey"
             keyPassword = "android"
         }
-        val selfSignedProperties = file("${System.getProperty("user.home")}/nextplayer-signing.properties")
+        val selfSignedProperties = file("${System.getProperty("user.home")}/player-signing.properties")
         if (selfSignedProperties.exists()) {
             create("selfSigned") {
                 val properties = Properties().apply {

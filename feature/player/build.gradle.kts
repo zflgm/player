@@ -7,7 +7,7 @@ plugins {
 }
 
 android {
-    namespace = "dev.anilbeesetti.nextplayer.feature.player"
+    namespace = "com.zflgm.player.feature.player"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
 
     defaultConfig {

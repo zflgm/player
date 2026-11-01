@@ -7,7 +7,7 @@ plugins {
 }
 
 android {
-    namespace = "dev.anilbeesetti.nextplayer.core.database"
+    namespace = "com.zflgm.player.core.database"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
 
     sourceSets {
