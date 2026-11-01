@@ -3,6 +3,8 @@ package dev.anilbeesetti.nextplayer.core.media.network
 import android.net.Uri
 import dev.anilbeesetti.nextplayer.core.model.NetworkConnection
 import dev.anilbeesetti.nextplayer.core.model.NetworkProtocol
+import java.util.Collections
+import java.util.UUID
 
 /**
  * Playback URIs for files reached over SMB/FTP/SFTP/WebDAV.
@@ -29,6 +31,7 @@ object NetworkUri {
     private const val CONNECTION_ID_PARAM = "cid"
     private const val HOST_KEY_PARAM = "fp"
     private const val SUBFOLDERS_PARAM = "subdirs"
+    private const val SESSION_ID_PARAM = "sid"
 
     private const val SCHEME_SMB = "smb"
     private const val SCHEME_FTP = "ftp"
@@ -91,6 +94,10 @@ object NetworkUri {
      * Builds a throwaway connection for a URI that names its own server, e.g.
      * `smb://user:pass@host/share/dir/clip.mkv`. Credentials come from the user info; leaving it
      * out connects anonymously. Returns null if the URI is not one this can serve.
+     *
+     * Sanitized URIs (no user info, carrying `sid`) resolve through [sanitizeForTransport]'s
+     * in-memory session instead; a stale sid resolves to null rather than falling back to an
+     * anonymous connection that would just fail authentication confusingly.
      */
     fun adHocTargetOf(uri: Uri): Target? {
         val scheme = uri.scheme?.lowercase() ?: return null
@@ -111,19 +118,24 @@ object NetworkUri {
         val fileSegments = if (protocol == NetworkProtocol.SMB) segments.drop(1) else segments
         if (fileSegments.isEmpty()) return null
 
-        val userInfo = uri.userInfo?.let(Uri::decode).orEmpty()
-        val connection = NetworkConnection(
-            id = AD_HOC_ID,
-            name = host,
-            protocol = protocol,
-            host = host,
-            port = uri.port.takeIf { it > 0 },
-            path = root,
-            username = userInfo.substringBefore(':'),
-            password = userInfo.substringAfter(':', missingDelimiterValue = ""),
-            useHttps = scheme == SCHEME_WEBDAVS,
-            hostKeyFingerprint = uri.getQueryParameter(HOST_KEY_PARAM).orEmpty(),
-        )
+        val sessionId = uri.getQueryParameter(SESSION_ID_PARAM)
+        val connection = if (sessionId != null) {
+            adHocSessions[sessionId] ?: return null
+        } else {
+            val userInfo = uri.userInfo?.let(Uri::decode).orEmpty()
+            NetworkConnection(
+                id = AD_HOC_ID,
+                name = host,
+                protocol = protocol,
+                host = host,
+                port = uri.port.takeIf { it > 0 },
+                path = root,
+                username = userInfo.substringBefore(':'),
+                password = userInfo.substringAfter(':', missingDelimiterValue = ""),
+                useHttps = scheme == SCHEME_WEBDAVS,
+                hostKeyFingerprint = uri.getQueryParameter(HOST_KEY_PARAM).orEmpty(),
+            )
+        }
         val filePath = fileSegments.joinToString("/")
         return Target(
             connection = connection,
@@ -133,6 +145,39 @@ object NetworkUri {
             },
         )
     }
+
+    /**
+     * Strips user info from a network URI before it enters an Intent, MediaItem, media id,
+     * media session or playback history. Credentials are parked in this process' memory under a
+     * random session id the returned URI carries instead, so nothing parceled, logged or
+     * broadcast can expose them. Returns [uri] unchanged when there is nothing to strip.
+     *
+     * The tradeoff is deliberate: an ad-hoc link plays for the lifetime of the process only, and
+     * replaying it after a restart asks for credentials again instead of persisting them.
+     */
+    fun sanitizeForTransport(uri: Uri): Uri {
+        if (!isNetworkUri(uri)) return uri
+        val userInfo = uri.userInfo ?: return uri
+        if (userInfo.isBlank()) return uri
+        val connection = adHocTargetOf(uri)?.connection ?: return uri
+        val sessionId = UUID.randomUUID().toString()
+        adHocSessions[sessionId] = connection
+        val authority = if (uri.port > 0) "${uri.host}:${uri.port}" else uri.host.orEmpty()
+        return uri.buildUpon()
+            .encodedAuthority(authority)
+            .appendQueryParameter(SESSION_ID_PARAM, sessionId)
+            .build()
+    }
+
+    /** Credentials for sanitized ad-hoc URIs. Process lifetime only; never persisted. */
+    private val adHocSessions: MutableMap<String, NetworkConnection> = Collections.synchronizedMap(
+        object : LinkedHashMap<String, NetworkConnection>(8, 0.75f, true) {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, NetworkConnection>): Boolean =
+                size > MAX_AD_HOC_SESSIONS
+        },
+    )
+
+    private const val MAX_AD_HOC_SESSIONS = 32
 
     /** Saved connections are row ids, which Room starts at 1, so 0 can only be an ad-hoc one. */
     private const val AD_HOC_ID = 0L

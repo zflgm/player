@@ -227,6 +227,52 @@ class NetworkUriTest {
         )
     }
 
+    // ----- sanitize: credentials never travel with the uri -----
+
+    @Test
+    fun `sanitize strips credentials and keeps playback resolvable`() {
+        val clean = NetworkUri.sanitizeForTransport("ftp://bob:s3cret@host/clip.mp4".toUri())
+
+        assertNull(clean.userInfo)
+        assertEquals("host", clean.host)
+        assertEquals("clip.mp4", clean.lastPathSegment)
+
+        val target = NetworkUri.adHocTargetOf(clean)!!
+        assertEquals("bob", target.connection.username)
+        assertEquals("s3cret", target.connection.password)
+        assertEquals("/clip.mp4", target.filePath)
+    }
+
+    @Test
+    fun `sanitize keeps the smb share split working through the session`() {
+        val clean = NetworkUri.sanitizeForTransport("smb://bob:s3cret@host/Media/Shows/ep.mkv".toUri())
+
+        val target = NetworkUri.adHocTargetOf(clean)!!
+        assertEquals("Media", target.connection.path)
+        assertEquals("Shows/ep.mkv", target.filePath)
+    }
+
+    @Test
+    fun `sanitize is idempotent`() {
+        val once = NetworkUri.sanitizeForTransport("ftp://bob:s3cret@host/clip.mp4".toUri())
+        assertEquals(once, NetworkUri.sanitizeForTransport(once))
+    }
+
+    @Test
+    fun `sanitize leaves uris without credentials untouched`() {
+        val plain = "ftp://host/clip.mp4".toUri()
+        assertEquals(plain, NetworkUri.sanitizeForTransport(plain))
+        val local = "content://media/external/video/media/1".toUri()
+        assertEquals(local, NetworkUri.sanitizeForTransport(local))
+    }
+
+    @Test
+    fun `a sanitized uri whose session is gone resolves to nothing`() {
+        val clean = NetworkUri.sanitizeForTransport("ftp://bob:s3cret@host/clip.mp4".toUri())
+        val stale = clean.buildUpon().clearQuery().appendQueryParameter("sid", "gone").build()
+        assertNull(NetworkUri.adHocTargetOf(stale))
+    }
+
     private fun connection(protocol: NetworkProtocol) = NetworkConnection(
         id = 3,
         name = "NAS",

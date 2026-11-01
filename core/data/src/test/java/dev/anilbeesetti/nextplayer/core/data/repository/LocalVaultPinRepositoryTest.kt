@@ -49,4 +49,40 @@ class LocalVaultPinRepositoryTest {
         assertFalse(repository.isBiometricEnabled())
         assertTrue(repository.verifyPin("5678"))
     }
+
+    @Test
+    fun `wrong pin is rejected`() = runTest {
+        repository.setPin("1234")
+        assertFalse(repository.verifyPin("0000"))
+        assertFalse(repository.verifyPin(""))
+        assertTrue(repository.verifyPin("1234"))
+    }
+
+    @Test
+    fun `new pins are stored as pbkdf2 not raw sha256`() = runTest {
+        repository.setPin("1234")
+        val stored = context.getSharedPreferences("vault_security_prefs", Context.MODE_PRIVATE)
+            .getString("vault_pin_hash", null)!!
+        assertTrue(stored.startsWith("pbkdf2:"))
+    }
+
+    @Test
+    fun `legacy sha256 pins still verify and upgrade in place`() = runTest {
+        val salt = "deadbeef"
+        val legacyHash = java.security.MessageDigest.getInstance("SHA-256")
+            .digest((salt + "1234").toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
+        context.getSharedPreferences("vault_security_prefs", Context.MODE_PRIVATE).edit {
+            putString("vault_pin_hash", legacyHash)
+            putString("vault_pin_salt", salt)
+        }
+
+        assertTrue(repository.verifyPin("1234"))
+        assertFalse(repository.verifyPin("0000"))
+
+        val upgraded = context.getSharedPreferences("vault_security_prefs", Context.MODE_PRIVATE)
+            .getString("vault_pin_hash", null)!!
+        assertTrue(upgraded.startsWith("pbkdf2:"))
+        assertTrue(LocalVaultPinRepository(context).verifyPin("1234"))
+    }
 }

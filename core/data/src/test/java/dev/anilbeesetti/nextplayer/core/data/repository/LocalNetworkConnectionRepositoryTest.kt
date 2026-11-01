@@ -1,5 +1,6 @@
 package dev.anilbeesetti.nextplayer.core.data.repository
 
+import dev.anilbeesetti.nextplayer.core.data.security.SecretCipher
 import dev.anilbeesetti.nextplayer.core.database.dao.NetworkConnectionDao
 import dev.anilbeesetti.nextplayer.core.database.entities.NetworkConnectionEntity
 import dev.anilbeesetti.nextplayer.core.model.NetworkAuthentication
@@ -13,7 +14,8 @@ import org.junit.Test
 
 class LocalNetworkConnectionRepositoryTest {
     private val dao = FakeNetworkConnectionDao()
-    private val repository = LocalNetworkConnectionRepository(dao)
+    private val cipher = FakeSecretCipher()
+    private val repository = LocalNetworkConnectionRepository(dao, cipher)
 
     @Test
     fun `upsert and get connection preserves authentication settings`() = runTest {
@@ -51,12 +53,60 @@ class LocalNetworkConnectionRepositoryTest {
         )
     }
 
+    @Test
+    fun `password and passphrase are stored encrypted`() = runTest {
+        repository.upsert(
+            NetworkConnection(
+                name = "NAS",
+                protocol = NetworkProtocol.SMB,
+                host = "10.0.2.2",
+                username = "bob",
+                password = "hunter2",
+                privateKeyPassphrase = "key-pass",
+            ),
+        )
+
+        val stored = dao.stored()
+        assertEquals("enc:2retnuh", stored.password)
+        assertEquals("enc:ssap-yek", stored.privateKeyPassphrase)
+        // Reading back still yields the real secrets.
+        val loaded = repository.getConnection(1)!!
+        assertEquals("hunter2", loaded.password)
+        assertEquals("key-pass", loaded.privateKeyPassphrase)
+    }
+
+    @Test
+    fun `plaintext rows written before encryption still read correctly`() = runTest {
+        dao.seed(
+            NetworkConnectionEntity(
+                id = 5,
+                name = "Old",
+                protocol = NetworkProtocol.FTP.name,
+                host = "10.0.2.2",
+                password = "plain-secret",
+                privateKeyPassphrase = "",
+            ),
+        )
+
+        assertEquals("plain-secret", repository.getConnection(5)?.password)
+    }
+
+    private class FakeSecretCipher : SecretCipher {
+        override fun encrypt(plainText: String): String =
+            if (plainText.isEmpty()) plainText else "enc:" + plainText.reversed()
+
+        override fun decrypt(cipherText: String): String =
+            if (cipherText.startsWith("enc:")) cipherText.removePrefix("enc:").reversed() else cipherText
+    }
+
     private class FakeNetworkConnectionDao : NetworkConnectionDao {
         private val connections = MutableStateFlow<List<NetworkConnectionEntity>>(emptyList())
 
         fun seed(connection: NetworkConnectionEntity) {
             connections.value = connections.value + connection
         }
+
+        fun stored(): NetworkConnectionEntity = connections.value.last()
 
         override suspend fun upsert(connection: NetworkConnectionEntity): Long {
             val id = connection.id.takeIf { it != 0L } ?: 1L

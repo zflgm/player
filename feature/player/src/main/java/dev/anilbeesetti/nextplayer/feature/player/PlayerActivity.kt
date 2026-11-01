@@ -28,6 +28,7 @@ import dev.anilbeesetti.nextplayer.core.common.extensions.getInitialDirectoryUri
 import dev.anilbeesetti.nextplayer.core.common.extensions.getMediaContentUri
 import dev.anilbeesetti.nextplayer.core.common.service.registerForSuspendActivityResult
 import dev.anilbeesetti.nextplayer.core.data.repository.PlaylistRepository
+import dev.anilbeesetti.nextplayer.core.media.network.NetworkUri
 import dev.anilbeesetti.nextplayer.core.model.playlistUriDisplayName
 import dev.anilbeesetti.nextplayer.core.ui.R as coreUiR
 import dev.anilbeesetti.nextplayer.core.ui.theme.NextPlayerTheme
@@ -271,7 +272,10 @@ class PlayerActivity : ComponentActivity() {
             finishAndStopPlayerSession()
             return
         }
-        val uri = intent.data ?: return
+        val uri = intent.data?.let(NetworkUri::sanitizeForTransport) ?: return
+        // Persist the stripped form so later reads of this intent (and the recents snapshot)
+        // never see credentials either.
+        if (uri != intent.data) intent.data = uri
 
         val returningFromBackground = !isIntentNew
         val currentUri = controller.currentMediaItem?.localConfiguration?.uri

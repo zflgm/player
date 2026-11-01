@@ -4,6 +4,7 @@ import androidx.datastore.core.DataStore
 import dev.anilbeesetti.nextplayer.core.common.Logger
 import dev.anilbeesetti.nextplayer.core.common.di.DiQualifiers
 import dev.anilbeesetti.nextplayer.core.model.PlayerPreferences
+import java.io.IOException
 import org.koin.core.annotation.Factory
 import org.koin.core.annotation.Named
 
@@ -21,8 +22,10 @@ class PlayerPreferencesDataSource(
     override suspend fun update(transform: suspend (PlayerPreferences) -> PlayerPreferences) {
         try {
             preferencesDataStore.updateData(transform)
-        } catch (ioException: Exception) {
-            Logger.logError(TAG, "Failed to update app preferences: $ioException")
+        } catch (ioException: IOException) {
+            // Only swallow disk IO failures. CancellationException and other programming errors
+            // must propagate so structured concurrency keeps working.
+            Logger.logError(TAG, "Failed to update player preferences: $ioException")
         }
     }
 }

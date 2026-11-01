@@ -6,6 +6,7 @@ import android.net.Uri
 import androidx.navigation3.runtime.EntryProviderScope
 import androidx.navigation3.runtime.NavBackStack
 import androidx.navigation3.runtime.NavKey
+import dev.anilbeesetti.nextplayer.core.media.network.NetworkUri
 import dev.anilbeesetti.nextplayer.feature.player.PlayerActivity
 import dev.anilbeesetti.nextplayer.feature.player.utils.PlayerApi
 import dev.anilbeesetti.nextplayer.feature.videopicker.navigation.mediaPickerEntry
@@ -51,15 +52,19 @@ internal fun Context.startPlayback(
 }
 
 private fun Context.startPlayback(uri: Uri, playlist: List<Uri>?, grantReadPermission: Boolean) {
+    // Credentials in ad-hoc network URIs must never reach an Intent: intents are parceled and
+    // show up in bugreports, logcat and the recents snapshot.
+    val safeUri = NetworkUri.sanitizeForTransport(uri)
+    val safePlaylist = playlist?.map(NetworkUri::sanitizeForTransport)
     if (grantReadPermission) {
-        (playlist ?: listOf(uri)).forEach {
+        (safePlaylist ?: listOf(safeUri)).forEach {
             grantUriPermission(packageName, it, Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
     }
     val intent = Intent(this, PlayerActivity::class.java).apply {
         action = Intent.ACTION_VIEW
-        data = uri
-        playlist?.let { putParcelableArrayListExtra(PlayerApi.API_PLAYLIST, ArrayList(it)) }
+        data = safeUri
+        safePlaylist?.let { putParcelableArrayListExtra(PlayerApi.API_PLAYLIST, ArrayList(it)) }
         if (grantReadPermission) addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
     startActivity(intent)

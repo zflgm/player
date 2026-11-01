@@ -4,6 +4,7 @@ import androidx.datastore.core.DataStore
 import dev.anilbeesetti.nextplayer.core.common.Logger
 import dev.anilbeesetti.nextplayer.core.common.di.DiQualifiers
 import dev.anilbeesetti.nextplayer.core.model.SearchHistory
+import java.io.IOException
 import kotlinx.coroutines.flow.Flow
 import org.koin.core.annotation.Factory
 import org.koin.core.annotation.Named
@@ -24,7 +25,9 @@ class SearchHistoryDataSource(
     ) {
         try {
             searchHistoryDataStore.updateData(transform)
-        } catch (ioException: Exception) {
+        } catch (ioException: IOException) {
+            // Only swallow disk IO failures. CancellationException and other programming errors
+            // must propagate so structured concurrency keeps working.
             Logger.logError(TAG, "Failed to update search history: $ioException")
         }
     }

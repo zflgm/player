@@ -46,6 +46,5 @@ allprojects {
             showCauses = true
             showStackTraces = true
         }
-        ignoreFailures = true
     }
 }

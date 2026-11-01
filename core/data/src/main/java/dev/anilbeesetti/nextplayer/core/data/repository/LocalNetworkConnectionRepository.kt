@@ -1,5 +1,6 @@
 package dev.anilbeesetti.nextplayer.core.data.repository
 
+import dev.anilbeesetti.nextplayer.core.data.security.SecretCipher
 import dev.anilbeesetti.nextplayer.core.database.dao.NetworkConnectionDao
 import dev.anilbeesetti.nextplayer.core.database.entities.NetworkConnectionEntity
 import dev.anilbeesetti.nextplayer.core.model.NetworkAuthentication
@@ -12,6 +13,7 @@ import org.koin.core.annotation.Single
 @Single
 class LocalNetworkConnectionRepository(
     private val networkConnectionDao: NetworkConnectionDao,
+    private val secretCipher: SecretCipher,
 ) : NetworkConnectionRepository {
 
     override fun getConnections(): Flow<List<NetworkConnection>> =
@@ -33,12 +35,12 @@ class LocalNetworkConnectionRepository(
         port = port,
         path = path,
         username = username,
-        password = password,
+        password = secretCipher.decrypt(password),
         useHttps = useHttps,
         authentication = runCatching { NetworkAuthentication.valueOf(authentication) }
             .getOrDefault(NetworkAuthentication.PASSWORD),
         privateKeyFileName = privateKeyFileName,
-        privateKeyPassphrase = privateKeyPassphrase,
+        privateKeyPassphrase = secretCipher.decrypt(privateKeyPassphrase),
         hostKeyFingerprint = hostKeyFingerprint,
     )
 
@@ -50,11 +52,11 @@ class LocalNetworkConnectionRepository(
         port = port,
         path = path,
         username = username,
-        password = password,
+        password = secretCipher.encrypt(password),
         useHttps = useHttps,
         authentication = authentication.name,
         privateKeyFileName = privateKeyFileName,
-        privateKeyPassphrase = privateKeyPassphrase,
+        privateKeyPassphrase = secretCipher.encrypt(privateKeyPassphrase),
         hostKeyFingerprint = hostKeyFingerprint,
     )
 }

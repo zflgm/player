@@ -91,9 +91,9 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.guava.future
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import org.koin.android.ext.android.inject
 
 @OptIn(UnstableApi::class)
@@ -764,12 +764,17 @@ class PlayerService : MediaSessionService() {
                 )
             }.build()
         } catch (e: Exception) {
-            e.printStackTrace()
+            Logger.logError(PLAYER_SERVICE_LOG_TAG, "Failed to build MediaSession: $e")
+            stopSelf()
         }
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
-        val player = mediaSession?.player!!
+        // mediaSession can be null when session construction failed earlier; never force-unwrap it.
+        val player = mediaSession?.player ?: run {
+            stopSelf()
+            return
+        }
         if (!player.playWhenReady || player.mediaItemCount == 0 || player.playbackState == Player.STATE_ENDED) {
             stopSelf()
         }
@@ -789,10 +794,13 @@ class PlayerService : MediaSessionService() {
             release()
             mediaSession = null
         }
-        subtitleCacheDir.deleteFiles()
-        // Drop the network connection before the scope dies, so a share isn't held open for the
-        // lifetime of the process after playback ends.
-        runBlocking { dataSourceFactory.release() }
+        // Cleanup must not block the main thread: network disconnects (SMB especially) can stall
+        // for seconds and onDestroy runs on the main thread, which is a direct ANR risk. Run a
+        // bounded background cleanup instead of runBlocking.
+        CoroutineScope(Dispatchers.IO + SupervisorJob()).launch {
+            withTimeoutOrNull(DATA_SOURCE_RELEASE_TIMEOUT_MS) { dataSourceFactory.release() }
+            subtitleCacheDir.deleteFiles()
+        }
         serviceScope.cancel()
     }
 
@@ -1063,6 +1071,10 @@ private val DecoderTrackType.mediaTrackType: Int
     }
 
 private const val DECODER_LOG_TAG = "Decoder"
+private const val PLAYER_SERVICE_LOG_TAG = "PlayerService"
+
+// Network teardown in onDestroy is bounded so a stalled SMB close can never outlive the service.
+private const val DATA_SOURCE_RELEASE_TIMEOUT_MS = 5_000L
 
 @get:UnstableApi
 @set:UnstableApi

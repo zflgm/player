@@ -3,6 +3,7 @@ package dev.anilbeesetti.nextplayer.core.datastore.di
 import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.core.DataStoreFactory
+import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
 import androidx.datastore.dataStoreFile
 import dev.anilbeesetti.nextplayer.core.common.di.DiQualifiers
 import dev.anilbeesetti.nextplayer.core.common.di.DispatchersModule
@@ -35,6 +36,8 @@ class DataStoreModule {
         @Named(DiQualifiers.APPLICATION_SCOPE) scope: CoroutineScope,
     ): DataStore<ApplicationPreferences> = DataStoreFactory.create(
         serializer = ApplicationPreferencesSerializer,
+        // Reset to defaults instead of crash-looping when the file is corrupted.
+        corruptionHandler = ReplaceFileCorruptionHandler { ApplicationPreferencesSerializer.defaultValue },
         scope = CoroutineScope(scope.coroutineContext + ioDispatcher),
         produceFile = { context.dataStoreFile(APP_PREFERENCES_DATASTORE_FILE) },
     )
@@ -47,6 +50,8 @@ class DataStoreModule {
         @Named(DiQualifiers.APPLICATION_SCOPE) scope: CoroutineScope,
     ): DataStore<PlayerPreferences> = DataStoreFactory.create(
         serializer = PlayerPreferencesSerializer,
+        // Reset to defaults instead of crash-looping when the file is corrupted.
+        corruptionHandler = ReplaceFileCorruptionHandler { PlayerPreferencesSerializer.defaultValue },
         scope = CoroutineScope(scope.coroutineContext + ioDispatcher),
         produceFile = { applicationContext.dataStoreFile(PLAYER_PREFERENCES_DATASTORE_FILE) },
     )
@@ -59,6 +64,8 @@ class DataStoreModule {
         @Named(DiQualifiers.APPLICATION_SCOPE) scope: CoroutineScope,
     ): DataStore<SearchHistory> = DataStoreFactory.create(
         serializer = SearchHistorySerializer,
+        // Reset to defaults instead of crash-looping when the file is corrupted.
+        corruptionHandler = ReplaceFileCorruptionHandler { SearchHistorySerializer.defaultValue },
         scope = CoroutineScope(scope.coroutineContext + ioDispatcher),
         produceFile = { applicationContext.dataStoreFile(SEARCH_HISTORY_DATASTORE_FILE) },
     )

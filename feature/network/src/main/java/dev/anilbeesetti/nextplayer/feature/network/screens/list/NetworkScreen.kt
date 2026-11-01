@@ -83,7 +83,9 @@ internal fun NetworkScreenContent(
     onAction: (NetworkAction) -> Unit,
 ) {
     var connectionToDelete by remember { mutableStateOf<NetworkConnection?>(null) }
-    var streamUrl by rememberSaveable { mutableStateOf("") }
+    // Not saveable: ad-hoc stream URLs may carry user:pass@ credentials, which must not enter
+    // the instance-state Bundle.
+    var streamUrl by remember { mutableStateOf("") }
     val trimmedStreamUrl = streamUrl.trim()
 
     val showEmptyState = state.connections.isEmpty() && !state.isLoading
@@ -302,7 +304,9 @@ private fun ConnectHostDialog(
         HostConnectFlow.None -> return
     }
     var username by rememberSaveable(host) { mutableStateOf("") }
-    var password by rememberSaveable(host) { mutableStateOf("") }
+    // Passwords must not enter the saved-instance-state Bundle: it is parceled and can end up
+    // in bugreports. Re-entering the password after a process recreation is the safe tradeoff.
+    var password by remember(host) { mutableStateOf("") }
 
     NextDialog(
         onDismissRequest = { onAction(NetworkAction.DismissConnectFlow) },
