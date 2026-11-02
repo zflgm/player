@@ -102,6 +102,12 @@ internal class FakePlaylistRepository : PlaylistRepository {
         insertionOrderRestorations++
     }
 
+    val playlistOrderReplacements = mutableListOf<List<Long>>()
+
+    override suspend fun replacePlaylistOrder(orderedIds: List<Long>) {
+        playlistOrderReplacements += orderedIds
+    }
+
     override suspend fun markVideoPlayed(playlistId: Long, videoUri: String) = Unit
 
     override suspend fun countFilePlaylistsBySource(source: String): Int = 0

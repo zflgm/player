@@ -116,6 +116,10 @@ class LocalPlaylistRepository(
         playlistDao.restoreInsertionOrder(playlistId)
     }
 
+    override suspend fun replacePlaylistOrder(orderedIds: List<Long>) {
+        playlistDao.replacePlaylistOrder(orderedIds)
+    }
+
     override suspend fun markVideoPlayed(playlistId: Long, videoUri: String) {
         playlistDao.markItemPlayed(
             playlistId = playlistId,

@@ -17,6 +17,9 @@ data class PlaylistEntity(
     val createdAt: Long = System.currentTimeMillis(),
     @ColumnInfo(name = "last_refreshed_at")
     val lastRefreshedAt: Long? = null,
+    /** Display rank among playlists; ties fall back to creation order. */
+    @ColumnInfo(name = "sort_order", defaultValue = "0")
+    val sortOrder: Int = 0,
 )
 
 data class PlaylistSummaryEntity(

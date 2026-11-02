@@ -1,5 +1,6 @@
 package com.zflgm.player.feature.playlist.screens.detail
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -15,6 +16,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheetProperties
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -43,8 +45,18 @@ internal fun PlaylistAddSheet(
     state: PlaylistDetailUiState,
     onAction: (PlaylistDetailUiAction) -> Unit,
 ) {
+    // While browsing a share, back climbs one level instead of tearing the sheet down;
+    // at the connection list or the local tab it dismisses.
+    BackHandler {
+        if (state.addBrowse != null) {
+            onAction(PlaylistDetailUiAction.OnAddBrowseUp)
+        } else {
+            onAction(PlaylistDetailUiAction.OnDismissAddSheet)
+        }
+    }
     ModalBottomSheet(
         onDismissRequest = { onAction(PlaylistDetailUiAction.OnDismissAddSheet) },
+        properties = ModalBottomSheetProperties(shouldDismissOnBackPress = false),
     ) {
         Column(
             modifier = Modifier

@@ -413,8 +413,13 @@ class PlaylistDetailViewModel(
 
     private fun addBrowseUp() {
         val browse = state.value.addBrowse ?: return
+        if (browse.pathStack.size <= 1) {
+            // At the connection root, one level up is the connection list itself.
+            closeAddClient()
+            stateInternal.update { it.copy(addBrowse = null) }
+            return
+        }
         val client = addClient ?: return
-        if (browse.pathStack.size <= 1) return
         stateInternal.update {
             it.copy(
                 addBrowse = browse.copy(

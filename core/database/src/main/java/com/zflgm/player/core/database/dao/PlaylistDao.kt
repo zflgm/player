@@ -23,7 +23,7 @@ interface PlaylistDao {
         FROM playlist
         LEFT JOIN playlist_item ON playlist.id = playlist_item.playlist_id
         GROUP BY playlist.id
-        ORDER BY playlist.created_at, playlist.id
+        ORDER BY playlist.sort_order, playlist.created_at, playlist.id
         """,
     )
     fun observeSummaries(): Flow<List<PlaylistSummaryEntity>>
@@ -52,6 +52,13 @@ interface PlaylistDao {
     /** Above every existing row, so a playlist with gaps in its positions cannot collide. */
     @Query("SELECT COALESCE(MAX(position) + 1, 0) FROM playlist_item WHERE playlist_id = :playlistId")
     suspend fun nextItemPosition(playlistId: Long): Int
+
+    /** Above every existing playlist, so a newly created one lands at the end of the list. */
+    @Query("SELECT COALESCE(MAX(sort_order) + 1, 0) FROM playlist")
+    suspend fun nextPlaylistSortOrder(): Int
+
+    @Query("UPDATE playlist SET sort_order = :sortOrder WHERE id = :playlistId")
+    suspend fun setPlaylistSortOrder(playlistId: Long, sortOrder: Int)
 
     @Insert
     suspend fun insertPlaylist(playlist: PlaylistEntity): Long
@@ -98,12 +105,20 @@ interface PlaylistDao {
     @Query("UPDATE playlist_item SET position = position + :offset WHERE playlist_id = :playlistId")
     suspend fun shiftPositions(playlistId: Long, offset: Int)
 
+    /** Rewrites `sort_order` for the whole list; the caller owns which ids are included. */
+    @Transaction
+    suspend fun replacePlaylistOrder(orderedIds: List<Long>) {
+        orderedIds.forEachIndexed { index, playlistId ->
+            setPlaylistSortOrder(playlistId, index)
+        }
+    }
+
     @Update
     suspend fun updateItems(items: List<PlaylistItemEntity>)
 
     @Transaction
     suspend fun createPlaylist(name: String, uris: List<String>): Long {
-        val playlistId = insertPlaylist(PlaylistEntity(name = name))
+        val playlistId = insertPlaylist(PlaylistEntity(name = name, sortOrder = nextPlaylistSortOrder()))
         addItems(playlistId, uris)
         return playlistId
     }
@@ -113,7 +128,7 @@ interface PlaylistDao {
         playlist: PlaylistEntity,
         items: List<PlaylistItemEntity>,
     ): Long {
-        val playlistId = insertPlaylist(playlist)
+        val playlistId = insertPlaylist(playlist.copy(sortOrder = nextPlaylistSortOrder()))
         insertItems(items.map { it.copy(playlistId = playlistId) })
         return playlistId
     }
@@ -147,6 +162,7 @@ interface PlaylistDao {
             type = SNAPSHOT_PLAYLIST_TYPE,
             source = source,
             lastRefreshedAt = System.currentTimeMillis(),
+            sortOrder = nextPlaylistSortOrder(),
         ),
     )
 

@@ -5,6 +5,7 @@ import com.sun.net.httpserver.HttpServer
 import com.zflgm.player.core.data.playlist.M3UDocumentPermissionManager
 import com.zflgm.player.core.data.playlist.M3UParser
 import com.zflgm.player.core.media.sync.MediaSynchronizer
+import com.zflgm.player.core.model.PlaylistSummary
 import com.zflgm.player.core.model.PlaylistType
 import com.zflgm.player.core.ui.base.ActionState
 import com.zflgm.player.feature.playlist.FakePlaylistRepository
@@ -111,6 +112,42 @@ class PlaylistListViewModelTest {
             server.stop(0)
         }
     }
+
+    @Test
+    fun sortByNameWritesTheWholeListOrder() = runTest(dispatcher) {
+        val viewModel = viewModel(mutableListOf())
+        repository.playlists.value = listOf(
+            summary(id = 3, name = "Chase"),
+            summary(id = 1, name = "amber"),
+            summary(id = 2, name = "Bravo"),
+        )
+
+        advanceUntilIdle()
+
+        viewModel.onAction(PlaylistUiAction.SortPlaylists(PlaylistListSort.NAME_ASCENDING))
+        advanceUntilIdle()
+
+        // Natural title order: amber < Bravo < Chase, case-insensitive.
+        assertEquals(listOf(listOf(1L, 2L, 3L)), repository.playlistOrderReplacements)
+    }
+
+    @Test
+    fun dragOrderIsPersistedVerbatim() = runTest(dispatcher) {
+        val viewModel = viewModel(mutableListOf())
+
+        viewModel.onAction(PlaylistUiAction.ReplacePlaylistOrder(listOf(5L, 2L, 9L)))
+        advanceUntilIdle()
+
+        assertEquals(listOf(listOf(5L, 2L, 9L)), repository.playlistOrderReplacements)
+    }
+
+    private fun summary(id: Long, name: String) = PlaylistSummary(
+        id = id,
+        name = name,
+        type = PlaylistType.LOCAL,
+        itemCount = 0,
+        lastRefreshedAt = null,
+    )
 
     private fun viewModel(openedIds: MutableList<Long>) = PlaylistListViewModel(
         playlistRepository = repository,

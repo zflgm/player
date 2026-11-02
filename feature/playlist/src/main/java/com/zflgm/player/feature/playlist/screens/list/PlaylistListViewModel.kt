@@ -12,6 +12,7 @@ import com.zflgm.player.core.media.sync.MediaSynchronizer
 import com.zflgm.player.core.model.M3UPlaylist
 import com.zflgm.player.core.model.PlaylistSummary
 import com.zflgm.player.core.model.PlaylistType
+import com.zflgm.player.core.model.compareNaturalTitles
 import com.zflgm.player.core.ui.R
 import com.zflgm.player.core.ui.base.ActionState
 import com.zflgm.player.core.ui.base.DataState
@@ -83,6 +84,8 @@ class PlaylistListViewModel(
             is PlaylistUiAction.CreateM3UUrl -> createM3UUrl(action.url)
             is PlaylistUiAction.Rename -> rename(action.playlistId, action.name)
             is PlaylistUiAction.Delete -> delete(action.playlistId)
+            is PlaylistUiAction.SortPlaylists -> sortPlaylists(action.sort)
+            is PlaylistUiAction.ReplacePlaylistOrder -> replacePlaylistOrder(action.orderedIds)
         }
     }
 
@@ -227,6 +230,32 @@ class PlaylistListViewModel(
         }
     }
 
+    /** One-shot ordering the user applies and keeps, mirroring the item-level sort menu. */
+    private fun sortPlaylists(sort: PlaylistListSort) {
+        val playlists = (state.value.playlistsDataState as? DataState.Success)?.value ?: return
+        if (playlists.size < 2) return
+        val orderedIds = when (sort) {
+            PlaylistListSort.NAME_ASCENDING ->
+                playlists.sortedWith { a, b -> compareNaturalTitles(a.name, b.name) }
+            PlaylistListSort.NAME_DESCENDING ->
+                playlists.sortedWith { a, b -> compareNaturalTitles(b.name, a.name) }
+            PlaylistListSort.SHUFFLE -> playlists.shuffled()
+        }.map { it.id }
+        replacePlaylistOrder(orderedIds)
+    }
+
+    private fun replacePlaylistOrder(orderedIds: List<Long>) {
+        viewModelScope.launch {
+            try {
+                playlistRepository.replacePlaylistOrder(orderedIds)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Throwable) {
+                showToast(R.string.playlist_save_failed)
+            }
+        }
+    }
+
     private fun showToast(messageRes: Int) {
         systemService.showToast(
             text = systemService.getString(messageRes),
@@ -268,4 +297,12 @@ sealed interface PlaylistUiAction {
     data class CreateM3UUrl(val url: String) : PlaylistUiAction
     data class Rename(val playlistId: Long, val name: String) : PlaylistUiAction
     data class Delete(val playlistId: Long) : PlaylistUiAction
+    data class SortPlaylists(val sort: PlaylistListSort) : PlaylistUiAction
+    data class ReplacePlaylistOrder(val orderedIds: List<Long>) : PlaylistUiAction
+}
+
+enum class PlaylistListSort {
+    NAME_ASCENDING,
+    NAME_DESCENDING,
+    SHUFFLE,
 }

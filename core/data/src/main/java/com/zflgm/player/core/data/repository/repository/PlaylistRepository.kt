@@ -47,6 +47,9 @@ interface PlaylistRepository {
     /** Puts the rows back into the order they were first added. */
     suspend fun restoreInsertionOrder(playlistId: Long)
 
+    /** Rewrites the display order of the playlists themselves. */
+    suspend fun replacePlaylistOrder(orderedIds: List<Long>)
+
     suspend fun markVideoPlayed(playlistId: Long, videoUri: String)
 
     suspend fun countFilePlaylistsBySource(source: String): Int

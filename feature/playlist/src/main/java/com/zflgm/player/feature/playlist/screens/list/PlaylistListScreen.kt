@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -43,6 +44,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import com.zflgm.player.core.model.PlaylistSummary
 import com.zflgm.player.core.model.PlaylistType
 import com.zflgm.player.core.ui.R
@@ -56,6 +60,10 @@ import com.zflgm.player.core.ui.components.tvFocusRing
 import com.zflgm.player.core.ui.components.tvListFocus
 import com.zflgm.player.core.ui.designsystem.NextIcons
 import com.zflgm.player.core.ui.extensions.copy
+import com.zflgm.player.core.common.extensions.isTelevision
+import sh.calvin.reorderable.DragGestureDetector
+import sh.calvin.reorderable.ReorderableItem
+import sh.calvin.reorderable.rememberReorderableLazyListState
 
 @Composable
 fun PlaylistListScreen(
@@ -88,6 +96,46 @@ internal fun PlaylistListScreenContent(
                 title = stringResource(R.string.playlists),
                 fontWeight = FontWeight.Bold,
                 actions = {
+                    if ((state.playlistsDataState as? DataState.Success)?.value?.size?.let { it > 1 } == true) {
+                        var sortMenuExpanded by rememberSaveable { mutableStateOf(false) }
+                        Box {
+                            IconButton(
+                                onClick = { sortMenuExpanded = true },
+                                modifier = Modifier.tvFocusRing(),
+                            ) {
+                                Icon(
+                                    imageVector = NextIcons.Sort,
+                                    contentDescription = stringResource(R.string.sort_playlist),
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = sortMenuExpanded,
+                                onDismissRequest = { sortMenuExpanded = false },
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.sort_name_ascending)) },
+                                    onClick = {
+                                        sortMenuExpanded = false
+                                        onAction(PlaylistUiAction.SortPlaylists(PlaylistListSort.NAME_ASCENDING))
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.sort_name_descending)) },
+                                    onClick = {
+                                        sortMenuExpanded = false
+                                        onAction(PlaylistUiAction.SortPlaylists(PlaylistListSort.NAME_DESCENDING))
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.sort_shuffle)) },
+                                    onClick = {
+                                        sortMenuExpanded = false
+                                        onAction(PlaylistUiAction.SortPlaylists(PlaylistListSort.SHUFFLE))
+                                    },
+                                )
+                            }
+                        }
+                    }
                     IconButton(
                         onClick = { onAction(PlaylistUiAction.ShowCreationChooser) },
                         modifier = Modifier.tvFocusRing(),
@@ -133,27 +181,67 @@ internal fun PlaylistListScreenContent(
                     if (playlistList.isEmpty()) {
                         PlaylistListEmptyState(Modifier.fillMaxSize())
                     } else {
+                        val isTv = LocalContext.current.isTelevision
+                        val hapticFeedback = LocalHapticFeedback.current
+                        var displayedPlaylists by remember { mutableStateOf(playlistList) }
+                        var isDragging by remember { mutableStateOf(false) }
+                        LaunchedEffect(playlistList) {
+                            if (!isDragging) displayedPlaylists = playlistList
+                        }
+                        val listState = rememberLazyListState()
+                        val reorderState = rememberReorderableLazyListState(listState) { from, to ->
+                            displayedPlaylists = displayedPlaylists.toMutableList().apply {
+                                add(to.index, removeAt(from.index))
+                            }
+                            hapticFeedback.performHapticFeedback(HapticFeedbackType.SegmentFrequentTick)
+                        }
+
                         LazyColumn(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .tvListFocus(),
+                            state = listState,
                             contentPadding = PaddingValues(8.dp).copy(
                                 bottom = scaffoldPadding.calculateBottomPadding() + navigationBottomPadding,
                             ),
                             verticalArrangement = Arrangement.spacedBy(2.dp),
                         ) {
                             itemsIndexed(
-                                items = state.playlistsDataState.value,
+                                items = displayedPlaylists,
                                 key = { _, playlist -> playlist.id },
                             ) { index, playlist ->
-                                PlaylistRow(
-                                    playlist = playlist,
-                                    isFirstItem = index == 0,
-                                    isLastItem = index == state.playlistsDataState.value.lastIndex,
-                                    onClick = { onAction(PlaylistUiAction.OnPlaylistClick(playlist)) },
-                                    onRename = { onAction(PlaylistUiAction.ShowRenameDialogFor(playlist)) },
-                                    onDelete = { onAction(PlaylistUiAction.ShowDeleteDialogFor(playlist)) },
-                                )
+                                ReorderableItem(
+                                    state = reorderState,
+                                    key = playlist.id,
+                                ) {
+                                    PlaylistRow(
+                                        playlist = playlist,
+                                        isFirstItem = index == 0,
+                                        isLastItem = index == displayedPlaylists.lastIndex,
+                                        onClick = { onAction(PlaylistUiAction.OnPlaylistClick(playlist)) },
+                                        onRename = { onAction(PlaylistUiAction.ShowRenameDialogFor(playlist)) },
+                                        onDelete = { onAction(PlaylistUiAction.ShowDeleteDialogFor(playlist)) },
+                                        modifier = Modifier.draggableHandle(
+                                            enabled = !isTv,
+                                            dragGestureDetector = DragGestureDetector.LongPress,
+                                            onDragStarted = {
+                                                isDragging = true
+                                                hapticFeedback.performHapticFeedback(
+                                                    HapticFeedbackType.GestureThresholdActivate,
+                                                )
+                                            },
+                                            onDragStopped = {
+                                                isDragging = false
+                                                onAction(
+                                                    PlaylistUiAction.ReplacePlaylistOrder(
+                                                        displayedPlaylists.map { it.id },
+                                                    ),
+                                                )
+                                                hapticFeedback.performHapticFeedback(HapticFeedbackType.GestureEnd)
+                                            },
+                                        ),
+                                    )
+                                }
                             }
                         }
                     }
@@ -417,6 +505,7 @@ private fun PlaylistRow(
     onClick: () -> Unit,
     onRename: () -> Unit,
     onDelete: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     var menuExpanded by rememberSaveable { mutableStateOf(false) }
     val videoCount = pluralStringResource(
@@ -426,6 +515,7 @@ private fun PlaylistRow(
     )
 
     NextSegmentedListItem(
+        modifier = modifier,
         isFirstItem = isFirstItem,
         isLastItem = isLastItem,
         onClick = onClick,
