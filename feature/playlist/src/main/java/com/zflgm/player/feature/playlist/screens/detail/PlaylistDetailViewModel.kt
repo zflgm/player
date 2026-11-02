@@ -74,6 +74,7 @@ class PlaylistDetailViewModel(
                         isReordering = currentState.isReordering &&
                             playlist?.isOrderEditable == true &&
                             playlist.items.size > 1,
+                        canRefresh = playlist.canRefresh(),
                     )
                 }
             }
@@ -180,16 +181,18 @@ class PlaylistDetailViewModel(
 
     private fun refresh() {
         val playlist = currentPlaylist() ?: return
-        if (playlist.type == PlaylistType.LOCAL || refreshJob?.isActive == true) return
+        if (!playlist.canRefresh() || refreshJob?.isActive == true) return
         refreshJob = viewModelScope.launch {
             stateInternal.update { it.copy(isRefreshing = true) }
             try {
-                if (playlist.type == PlaylistType.NETWORK) {
-                    refreshSnapshot(playlist)
-                } else {
-                    val parsed = parseLinkedSource(playlist).getOrThrow()
-                    playlistRepository.replaceM3UItems(input.playlistId, parsed.items)
-                    showToast(systemService.getString(R.string.playlist_refresh_succeeded))
+                when (playlist.type) {
+                    PlaylistType.NETWORK -> refreshSnapshot(playlist)
+                    PlaylistType.LOCAL -> refreshNetworkFolders(playlist)
+                    else -> {
+                        val parsed = parseLinkedSource(playlist).getOrThrow()
+                        playlistRepository.replaceM3UItems(input.playlistId, parsed.items)
+                        showToast(systemService.getString(R.string.playlist_refresh_succeeded))
+                    }
                 }
             } catch (cancellation: CancellationException) {
                 throw cancellation
@@ -254,6 +257,74 @@ class PlaylistDetailViewModel(
         } finally {
             runCatching { client.disconnect() }
         }
+    }
+
+    /**
+     * Re-scans the network folders feeding a hand-built playlist and appends whatever appeared on
+     * the server since. Nothing is removed: an emptied folder says nothing about files the user
+     * put there on purpose. Playlists built before folders were recorded fall back to the folders
+     * their network items live in.
+     */
+    private suspend fun refreshNetworkFolders(playlist: Playlist) {
+        val folders = (
+            playlistRepository.getNetworkSources(playlist.id) +
+                playlist.items.mapNotNull { item ->
+                    NetworkUri.parentFolderSourceOf(Uri.parse(item.uri))
+                }
+            )
+            .distinct()
+            .take(MAX_REFRESH_FOLDERS)
+        if (folders.isEmpty()) {
+            showToast(systemService.getString(R.string.snapshot_refresh_unchanged))
+            return
+        }
+        var added = 0
+        var unreadable = 0
+        for (source in folders) {
+            val sourceUri = Uri.parse(source)
+            val connectionId = NetworkUri.connectionIdOf(sourceUri) ?: continue
+            val connection = networkConnectionRepository.getConnection(connectionId) ?: continue
+            val client = clientFactory.create(connection)
+            try {
+                client.connect().getOrThrow()
+                val discovered = mutableListOf<String>()
+                directoryScanner
+                    .scan(
+                        client = client,
+                        rootPath = NetworkUri.filePathOf(sourceUri, connection.protocol),
+                        recursive = NetworkUri.isRecursiveSnapshot(sourceUri),
+                    )
+                    .collect { event ->
+                        when (event) {
+                            is ScanEvent.Video ->
+                                discovered += NetworkUri.build(connection, event.file.path).toString()
+
+                            is ScanEvent.FolderUnreadable -> unreadable++
+                        }
+                    }
+                if (discovered.isNotEmpty()) {
+                    added += playlistRepository.addVideos(playlist.id, discovered)
+                }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Throwable) {
+                // One unreachable share must not hide the results of the folders that did answer.
+                unreadable++
+            } finally {
+                runCatching { client.disconnect() }
+            }
+        }
+        playlistRepository.markNetworkSourcesRefreshed(playlist.id, System.currentTimeMillis())
+        if (unreadable > 0) {
+            showToast(systemService.getString(R.string.snapshot_scan_partial).format(unreadable))
+        }
+        showToast(
+            if (added == 0) {
+                systemService.getString(R.string.snapshot_refresh_unchanged)
+            } else {
+                systemService.getString(R.string.refresh_added_result).format(added)
+            },
+        )
     }
 
     private suspend fun parseLinkedSource(playlist: Playlist): Result<M3UPlaylist> {
@@ -323,6 +394,12 @@ class PlaylistDetailViewModel(
             }
         }
     }
+
+    private fun Playlist?.canRefresh(): Boolean =
+        this != null && (
+            type != PlaylistType.LOCAL ||
+                items.any { item -> NetworkUri.isNetworkUri(Uri.parse(item.uri)) }
+            )
 
     private fun currentPlaylist(): Playlist? =
         (state.value.playlistDataState as? DataState.Success)?.value
@@ -480,6 +557,11 @@ class PlaylistDetailViewModel(
                     showToast(systemService.getString(R.string.snapshot_scan_empty))
                 } else {
                     playlistRepository.addVideos(input.playlistId, uris)
+                    // Remember the folder, otherwise this list has nothing to re-scan later.
+                    playlistRepository.addNetworkSource(
+                        playlistId = input.playlistId,
+                        source = NetworkUri.snapshotSource(connection, folderPath, recursive = true),
+                    )
                     closeAddClient()
                     stateInternal.update {
                         it.copy(showAddSheet = false, addSelection = emptySet(), addBrowse = null)
@@ -533,6 +615,8 @@ data class PlaylistDetailUiState(
     val addConnections: List<NetworkConnection> = emptyList(),
     val addBrowse: AddBrowseState? = null,
     val isAddingItems: Boolean = false,
+    /** True when a refresh has something to re-scan: a linked source, or network items. */
+    val canRefresh: Boolean = false,
 )
 
 enum class AddSheetTab { LOCAL, NETWORK }
@@ -578,3 +662,6 @@ sealed interface PlaylistDetailUiAction {
     data class OnAddBrowseInto(val folder: NetworkFile) : PlaylistDetailUiAction
     data object OnAddCurrentFolder : PlaylistDetailUiAction
 }
+
+/** Enough for any realistic playlist; guards against scanning a whole server by accident. */
+private const val MAX_REFRESH_FOLDERS = 32

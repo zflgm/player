@@ -273,6 +273,32 @@ class NetworkUriTest {
         assertNull(NetworkUri.adHocTargetOf(stale))
     }
 
+    @Test
+    fun `parent folder source points at the folder holding the file`() {
+        val connection = connection(NetworkProtocol.SMB)
+
+        val source = NetworkUri.parentFolderSourceOf(
+            NetworkUri.build(connection, "Movies/Season 1/ep.mkv"),
+        )!!
+
+        val sourceUri = source.toUri()
+        assertEquals("Movies/Season 1", NetworkUri.filePathOf(sourceUri, NetworkProtocol.SMB))
+        assertEquals(3L, NetworkUri.connectionIdOf(sourceUri))
+        // Derived folders are scanned one level deep: the original add may have been recursive,
+        // but re-walking the whole share from here is not what a refresh should do.
+        assertFalse(NetworkUri.isRecursiveSnapshot(sourceUri))
+    }
+
+    @Test
+    fun `a file at the share root has no folder to refresh`() {
+        assertNull(NetworkUri.parentFolderSourceOf(NetworkUri.build(connection(NetworkProtocol.SMB), "ep.mkv")))
+    }
+
+    @Test
+    fun `an ad-hoc uri names no saved connection to refresh`() {
+        assertNull(NetworkUri.parentFolderSourceOf("smb://bob:s3cret@host/share/dir/clip.mkv".toUri()))
+    }
+
     private fun connection(protocol: NetworkProtocol) = NetworkConnection(
         id = 3,
         name = "NAS",

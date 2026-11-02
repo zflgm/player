@@ -218,40 +218,6 @@ internal fun PlaylistDetailScreenContent(
                                 )
                             }
                         } else {
-                            if (playlist?.isOrderEditable == true) {
-                                IconButton(
-                                    onClick = { onAction(PlaylistDetailUiAction.OnShowAddSheet) },
-                                    enabled = !state.updateActionState.isRunning,
-                                    modifier = Modifier.tvFocusRing(),
-                                ) {
-                                    Icon(
-                                        imageVector = NextIcons.PlaylistAdd,
-                                        contentDescription = stringResource(R.string.add_to_playlist),
-                                    )
-                                }
-                            }
-                            if (playlist?.type != null && playlist.type != PlaylistType.LOCAL) {
-                                if (state.isRefreshing) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier
-                                            .padding(12.dp)
-                                            .size(24.dp),
-                                        strokeWidth = 2.dp,
-                                    )
-                                } else {
-                                    IconButton(
-                                        onClick = { onAction(PlaylistDetailUiAction.Refresh) },
-                                        modifier = Modifier.tvFocusRing(),
-                                    ) {
-                                        Icon(
-                                            imageVector = NextIcons.Update,
-                                            contentDescription = stringResource(
-                                                R.string.refresh_playlist,
-                                            ),
-                                        )
-                                    }
-                                }
-                            }
                             if (playlist != null && playlist.isOrderEditable && playlist.items.size > 1) {
                                 val hasDuration = playlist.items.hasSortableDuration()
                                 Box {
@@ -295,19 +261,79 @@ internal fun PlaylistDetailScreenContent(
                                     contentDescription = stringResource(R.string.search),
                                 )
                             }
-                            if (!isTv && playlist?.isOrderEditable == true) {
+                            // Secondary actions live in one place; the bar itself keeps the
+                            // things people reach for (search and the item sort menu).
+                            var moreExpanded by rememberSaveable { mutableStateOf(false) }
+                            Box {
                                 IconButton(
-                                    onClick = {
-                                        onAction(PlaylistDetailUiAction.OnReorderClick)
-                                    },
-                                    enabled = videoUris.size > 1 &&
-                                        !state.updateActionState.isRunning,
+                                    onClick = { moreExpanded = true },
                                     modifier = Modifier.tvFocusRing(),
                                 ) {
                                     Icon(
-                                        imageVector = NextIcons.Reorder,
-                                        contentDescription = stringResource(R.string.reorder_playlist),
+                                        imageVector = NextIcons.MoreVert,
+                                        contentDescription = stringResource(R.string.more),
                                     )
+                                }
+                                DropdownMenu(
+                                    expanded = moreExpanded,
+                                    onDismissRequest = { moreExpanded = false },
+                                ) {
+                                    if (playlist?.isOrderEditable == true) {
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(R.string.add_to_playlist)) },
+                                            leadingIcon = {
+                                                Icon(
+                                                    imageVector = NextIcons.PlaylistAdd,
+                                                    contentDescription = null,
+                                                )
+                                            },
+                                            enabled = !state.updateActionState.isRunning,
+                                            onClick = {
+                                                moreExpanded = false
+                                                onAction(PlaylistDetailUiAction.OnShowAddSheet)
+                                            },
+                                        )
+                                    }
+                                    if (state.canRefresh) {
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(R.string.refresh_playlist)) },
+                                            leadingIcon = {
+                                                if (state.isRefreshing) {
+                                                    CircularProgressIndicator(
+                                                        modifier = Modifier.size(24.dp),
+                                                        strokeWidth = 2.dp,
+                                                    )
+                                                } else {
+                                                    Icon(
+                                                        imageVector = NextIcons.Update,
+                                                        contentDescription = null,
+                                                    )
+                                                }
+                                            },
+                                            enabled = !state.isRefreshing,
+                                            onClick = {
+                                                moreExpanded = false
+                                                onAction(PlaylistDetailUiAction.Refresh)
+                                            },
+                                        )
+                                    }
+                                    if (!isTv && playlist?.isOrderEditable == true) {
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(R.string.reorder_playlist)) },
+                                            leadingIcon = {
+                                                Icon(
+                                                    imageVector = NextIcons.Reorder,
+                                                    contentDescription = null,
+                                                )
+                                            },
+                                            enabled = videoUris.size > 1 &&
+                                                !state.updateActionState.isRunning,
+                                            onClick = {
+                                                moreExpanded = false
+                                                onAction(PlaylistDetailUiAction.OnReorderClick)
+                                            },
+                                        )
+                                    }
                                 }
                             }
                         }

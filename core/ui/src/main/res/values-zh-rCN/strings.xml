@@ -432,6 +432,7 @@
     <string name="snapshot_scan_failed">扫描该文件夹失败，请检查连接后重试。</string>
     <string name="snapshot_refresh_result">新增 %1$d 个、移除 %2$d 个</string>
     <string name="snapshot_refresh_unchanged">没有变化</string>
+    <string name="refresh_added_result">新增 %1$d 个视频</string>
     <string name="delete_playlist">删除播放列表</string>
     <string name="playlist_actions">播放列表操作</string>
     <string name="remove_video">移除视频</string>

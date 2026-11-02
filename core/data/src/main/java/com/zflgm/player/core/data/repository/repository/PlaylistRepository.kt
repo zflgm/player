@@ -50,6 +50,15 @@ interface PlaylistRepository {
     /** Rewrites the display order of the playlists themselves. */
     suspend fun replacePlaylistOrder(orderedIds: List<Long>)
 
+    /** Remembers that a network folder feeds this playlist, so refresh can re-scan it. */
+    suspend fun addNetworkSource(playlistId: Long, source: String)
+
+    /** The network folders linked to this playlist, oldest first. */
+    suspend fun getNetworkSources(playlistId: Long): List<String>
+
+    /** Records that every linked folder was just re-scanned. */
+    suspend fun markNetworkSourcesRefreshed(playlistId: Long, refreshedAt: Long)
+
     suspend fun markVideoPlayed(playlistId: Long, videoUri: String)
 
     suspend fun countFilePlaylistsBySource(source: String): Int

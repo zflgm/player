@@ -125,6 +125,10 @@ private class FakePlaylistRepository(
     override suspend fun replaceOrder(playlistId: Long, orderedUris: List<String>) = error("Not used")
     override suspend fun restoreInsertionOrder(playlistId: Long) = error("Not used")
     override suspend fun replacePlaylistOrder(orderedIds: List<Long>) = error("Not used")
+    override suspend fun addNetworkSource(playlistId: Long, source: String) = error("Not used")
+    override suspend fun getNetworkSources(playlistId: Long): List<String> = error("Not used")
+    override suspend fun markNetworkSourcesRefreshed(playlistId: Long, refreshedAt: Long) =
+        error("Not used")
     override suspend fun markVideoPlayed(playlistId: Long, videoUri: String) = error("Not used")
     override suspend fun countFilePlaylistsBySource(source: String): Int = 0
 }

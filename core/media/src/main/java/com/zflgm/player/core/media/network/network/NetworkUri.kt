@@ -81,6 +81,27 @@ object NetworkUri {
     fun isRecursiveSnapshot(uri: Uri): Boolean =
         uri.getQueryParameter(SUBFOLDERS_PARAM)?.toBoolean() ?: true
 
+    /**
+     * The folder that holds [uri], expressed as a snapshot-style source so it can be re-scanned.
+     *
+     * Playlists that only kept the files (no recorded folders) fall back to this: every linked
+     * folder is derived from where its items live. Null for a file sitting at the root of a share,
+     * or for a URI that names no saved connection.
+     */
+    fun parentFolderSourceOf(uri: Uri): String? {
+        val connectionId = connectionIdOf(uri) ?: return null
+        val segments = uri.pathSegments.filter(String::isNotEmpty)
+        if (segments.size <= 1) return null
+        return Uri.Builder()
+            .scheme(uri.scheme)
+            .encodedAuthority(uri.encodedAuthority)
+            .apply { segments.dropLast(1).forEach(::appendPath) }
+            .appendQueryParameter(CONNECTION_ID_PARAM, connectionId.toString())
+            .appendQueryParameter(SUBFOLDERS_PARAM, false.toString())
+            .build()
+            .toString()
+    }
+
     /** Restores the path in the form the [NetworkClient] for [protocol] expects. */
     fun filePathOf(uri: Uri, protocol: NetworkProtocol): String {
         val path = uri.pathSegments.joinToString("/")

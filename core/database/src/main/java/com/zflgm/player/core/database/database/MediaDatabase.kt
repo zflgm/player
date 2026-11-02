@@ -13,6 +13,7 @@ import com.zflgm.player.core.database.entities.MediumStateEntity
 import com.zflgm.player.core.database.entities.NetworkConnectionEntity
 import com.zflgm.player.core.database.entities.PlaylistEntity
 import com.zflgm.player.core.database.entities.PlaylistItemEntity
+import com.zflgm.player.core.database.entities.PlaylistSourceEntity
 
 @Database(
     entities = [
@@ -21,8 +22,9 @@ import com.zflgm.player.core.database.entities.PlaylistItemEntity
         NetworkConnectionEntity::class,
         PlaylistEntity::class,
         PlaylistItemEntity::class,
+        PlaylistSourceEntity::class,
     ],
-    version = 13,
+    version = 14,
     exportSchema = true,
 )
 abstract class MediaDatabase : RoomDatabase() {
@@ -334,6 +336,25 @@ abstract class MediaDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL(
                     "ALTER TABLE `playlist` ADD COLUMN `sort_order` INTEGER NOT NULL DEFAULT 0",
+                )
+            }
+        }
+
+        val MIGRATION_13_14 = object : Migration(13, 14) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `playlist_source` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`playlist_id` INTEGER NOT NULL, " +
+                        "`source` TEXT NOT NULL, " +
+                        "`last_refreshed_at` INTEGER, " +
+                        "FOREIGN KEY(`playlist_id`) REFERENCES `playlist`(`id`) " +
+                        "ON UPDATE NO ACTION ON DELETE CASCADE)",
+                )
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS " +
+                        "`index_playlist_source_playlist_id_source` " +
+                        "ON `playlist_source` (`playlist_id`, `source`)",
                 )
             }
         }

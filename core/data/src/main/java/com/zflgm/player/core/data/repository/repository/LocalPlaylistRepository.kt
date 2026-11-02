@@ -2,6 +2,7 @@ package com.zflgm.player.core.data.repository
 
 import com.zflgm.player.core.database.dao.PlaylistDao
 import com.zflgm.player.core.database.entities.PlaylistEntity
+import com.zflgm.player.core.database.entities.PlaylistSourceEntity
 import com.zflgm.player.core.database.entities.PlaylistItemEntity
 import com.zflgm.player.core.database.entities.PlaylistSummaryEntity
 import com.zflgm.player.core.database.entities.PlaylistWithItems
@@ -118,6 +119,17 @@ class LocalPlaylistRepository(
 
     override suspend fun replacePlaylistOrder(orderedIds: List<Long>) {
         playlistDao.replacePlaylistOrder(orderedIds)
+    }
+
+    override suspend fun addNetworkSource(playlistId: Long, source: String) {
+        playlistDao.insertSources(listOf(PlaylistSourceEntity(playlistId = playlistId, source = source)))
+    }
+
+    override suspend fun getNetworkSources(playlistId: Long): List<String> =
+        playlistDao.getSources(playlistId)
+
+    override suspend fun markNetworkSourcesRefreshed(playlistId: Long, refreshedAt: Long) {
+        playlistDao.markSourcesRefreshed(playlistId, refreshedAt)
     }
 
     override suspend fun markVideoPlayed(playlistId: Long, videoUri: String) {

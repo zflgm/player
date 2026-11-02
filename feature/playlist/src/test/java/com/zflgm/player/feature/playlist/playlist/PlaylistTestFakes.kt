@@ -108,6 +108,18 @@ internal class FakePlaylistRepository : PlaylistRepository {
         playlistOrderReplacements += orderedIds
     }
 
+    val networkSources = mutableMapOf<Long, MutableList<String>>()
+
+    override suspend fun addNetworkSource(playlistId: Long, source: String) {
+        val sources = networkSources.getOrPut(playlistId) { mutableListOf() }
+        if (source !in sources) sources += source
+    }
+
+    override suspend fun getNetworkSources(playlistId: Long): List<String> =
+        networkSources[playlistId].orEmpty()
+
+    override suspend fun markNetworkSourcesRefreshed(playlistId: Long, refreshedAt: Long) = Unit
+
     override suspend fun markVideoPlayed(playlistId: Long, videoUri: String) = Unit
 
     override suspend fun countFilePlaylistsBySource(source: String): Int = 0

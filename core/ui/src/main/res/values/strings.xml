@@ -513,6 +513,7 @@
     <string name="snapshot_scan_failed">Couldn\'t scan this folder. Check the connection and try again.</string>
     <string name="snapshot_refresh_result">Added %1$d, removed %2$d</string>
     <string name="snapshot_refresh_unchanged">Nothing changed</string>
+    <string name="refresh_added_result">Added %1$d videos</string>
     <string name="delete_playlist">Delete playlist</string>
     <string name="delete_playlist_confirmation">Delete “%1$s” and its saved order?</string>
     <string name="playlist_actions">Playlist actions</string>

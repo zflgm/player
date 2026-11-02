@@ -9,6 +9,7 @@ import androidx.room.Transaction
 import androidx.room.Update
 import com.zflgm.player.core.database.entities.PlaylistEntity
 import com.zflgm.player.core.database.entities.PlaylistItemEntity
+import com.zflgm.player.core.database.entities.PlaylistSourceEntity
 import com.zflgm.player.core.database.entities.PlaylistSummaryEntity
 import com.zflgm.player.core.database.entities.PlaylistWithItems
 import kotlinx.coroutines.flow.Flow
@@ -71,6 +72,15 @@ interface PlaylistDao {
 
     @Query("DELETE FROM playlist WHERE id = :playlistId")
     suspend fun deletePlaylist(playlistId: Long)
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertSources(sources: List<PlaylistSourceEntity>): List<Long>
+
+    @Query("SELECT source FROM playlist_source WHERE playlist_id = :playlistId ORDER BY id")
+    suspend fun getSources(playlistId: Long): List<String>
+
+    @Query("UPDATE playlist_source SET last_refreshed_at = :refreshedAt WHERE playlist_id = :playlistId")
+    suspend fun markSourcesRefreshed(playlistId: Long, refreshedAt: Long)
 
     @Query("DELETE FROM playlist_item WHERE playlist_id = :playlistId AND uri = :uri")
     suspend fun deleteItem(playlistId: Long, uri: String)
