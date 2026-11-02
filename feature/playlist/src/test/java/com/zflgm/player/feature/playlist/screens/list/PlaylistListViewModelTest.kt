@@ -4,10 +4,13 @@ import android.content.Context
 import com.sun.net.httpserver.HttpServer
 import com.zflgm.player.core.data.playlist.M3UDocumentPermissionManager
 import com.zflgm.player.core.data.playlist.M3UParser
+import com.zflgm.player.core.data.repository.fake.FakePreferencesRepository
 import com.zflgm.player.core.media.sync.MediaSynchronizer
+import com.zflgm.player.core.model.PlaylistSortMode
 import com.zflgm.player.core.model.PlaylistSummary
 import com.zflgm.player.core.model.PlaylistType
 import com.zflgm.player.core.ui.base.ActionState
+import com.zflgm.player.core.ui.base.DataState
 import com.zflgm.player.feature.playlist.FakePlaylistRepository
 import com.zflgm.player.feature.playlist.FakeSystemService
 import java.net.InetSocketAddress
@@ -36,6 +39,7 @@ class PlaylistListViewModelTest {
     private lateinit var context: Context
     private lateinit var repository: FakePlaylistRepository
     private lateinit var systemService: FakeSystemService
+    private lateinit var preferencesRepository: FakePreferencesRepository
 
     @Before
     fun setUp() {
@@ -43,6 +47,7 @@ class PlaylistListViewModelTest {
         context = RuntimeEnvironment.getApplication()
         repository = FakePlaylistRepository()
         systemService = FakeSystemService()
+        preferencesRepository = FakePreferencesRepository()
     }
 
     @After
@@ -114,31 +119,68 @@ class PlaylistListViewModelTest {
     }
 
     @Test
-    fun sortByNameWritesTheWholeListOrder() = runTest(dispatcher) {
+    fun nameSortModeReordersTheViewWithoutRewritingTheStoredOrder() = runTest(dispatcher) {
         val viewModel = viewModel(mutableListOf())
         repository.playlists.value = listOf(
             summary(id = 3, name = "Chase"),
             summary(id = 1, name = "amber"),
             summary(id = 2, name = "Bravo"),
         )
-
         advanceUntilIdle()
 
-        viewModel.onAction(PlaylistUiAction.SortPlaylists(PlaylistListSort.NAME_ASCENDING))
+        viewModel.onAction(PlaylistUiAction.SetSortMode(PlaylistSortMode.NAME_ASCENDING))
         advanceUntilIdle()
 
         // Natural title order: amber < Bravo < Chase, case-insensitive.
-        assertEquals(listOf(listOf(1L, 2L, 3L)), repository.playlistOrderReplacements)
+        val displayed = (viewModel.state.value.playlistsDataState as DataState.Success).value
+        assertEquals(listOf(1L, 2L, 3L), displayed.map { it.id })
+        assertEquals(PlaylistSortMode.NAME_ASCENDING, viewModel.state.value.sortMode)
+        // A view-level sort must leave the hand-made arrangement alone.
+        assertTrue(repository.playlistOrderReplacements.isEmpty())
     }
 
     @Test
-    fun dragOrderIsPersistedVerbatim() = runTest(dispatcher) {
+    fun switchingBackToCustomRestoresTheStoredOrder() = runTest(dispatcher) {
         val viewModel = viewModel(mutableListOf())
-
-        viewModel.onAction(PlaylistUiAction.ReplacePlaylistOrder(listOf(5L, 2L, 9L)))
+        repository.playlists.value = listOf(
+            summary(id = 2, name = "Bravo"),
+            summary(id = 1, name = "amber"),
+        )
         advanceUntilIdle()
 
-        assertEquals(listOf(listOf(5L, 2L, 9L)), repository.playlistOrderReplacements)
+        viewModel.onAction(PlaylistUiAction.SetSortMode(PlaylistSortMode.NAME_DESCENDING))
+        advanceUntilIdle()
+        var displayed = (viewModel.state.value.playlistsDataState as DataState.Success).value
+        assertEquals(listOf(2L, 1L), displayed.map { it.id })
+
+        viewModel.onAction(PlaylistUiAction.SetSortMode(PlaylistSortMode.CUSTOM))
+        advanceUntilIdle()
+        displayed = (viewModel.state.value.playlistsDataState as DataState.Success).value
+        // Back to the order the repository reports, untouched by the name sort.
+        assertEquals(listOf(2L, 1L), displayed.map { it.id })
+    }
+
+    @Test
+    fun draggingStoresTheOrderAndRemembersItAsCustom() = runTest(dispatcher) {
+        val viewModel = viewModel(mutableListOf())
+        repository.playlists.value = listOf(
+            summary(id = 1, name = "A"),
+            summary(id = 2, name = "B"),
+        )
+        advanceUntilIdle()
+        viewModel.onAction(PlaylistUiAction.SetSortMode(PlaylistSortMode.NAME_ASCENDING))
+        advanceUntilIdle()
+
+        viewModel.onAction(PlaylistUiAction.ReplacePlaylistOrder(listOf(2L, 1L)))
+        advanceUntilIdle()
+
+        assertEquals(listOf(listOf(2L, 1L)), repository.playlistOrderReplacements)
+        // Dragging out of a name sort means the user now owns the order.
+        assertEquals(PlaylistSortMode.CUSTOM, viewModel.state.value.sortMode)
+        assertEquals(
+            PlaylistSortMode.CUSTOM,
+            preferencesRepository.applicationPreferences.value.playlistSortMode,
+        )
     }
 
     private fun summary(id: Long, name: String) = PlaylistSummary(
@@ -151,6 +193,7 @@ class PlaylistListViewModelTest {
 
     private fun viewModel(openedIds: MutableList<Long>) = PlaylistListViewModel(
         playlistRepository = repository,
+        preferencesRepository = preferencesRepository,
         m3uParser = M3UParser(context, Dispatchers.Unconfined),
         documentPermissionManager = M3UDocumentPermissionManager(context),
         mediaSynchronizer = FakeMediaSynchronizer,

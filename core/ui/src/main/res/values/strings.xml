@@ -529,6 +529,7 @@
     <string name="sort_duration_ascending">Duration (shortest first)</string>
     <string name="sort_duration_descending">Duration (longest first)</string>
     <string name="sort_shuffle">Shuffle</string>
+    <string name="sort_custom_order">Custom order</string>
     <string name="sort_restore_added_order">Restore added order</string>
     <string name="empty_playlist_title">This playlist is empty</string>
     <string name="empty_playlist_description">Use the button below to add videos or folders.</string>

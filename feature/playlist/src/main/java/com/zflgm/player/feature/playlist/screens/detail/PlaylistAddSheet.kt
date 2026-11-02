@@ -16,12 +16,12 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ModalBottomSheetProperties
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.ModalBottomSheetProperties
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
@@ -45,19 +45,21 @@ internal fun PlaylistAddSheet(
     state: PlaylistDetailUiState,
     onAction: (PlaylistDetailUiAction) -> Unit,
 ) {
-    // While browsing a share, back climbs one level instead of tearing the sheet down;
-    // at the connection list or the local tab it dismisses.
-    BackHandler {
-        if (state.addBrowse != null) {
-            onAction(PlaylistDetailUiAction.OnAddBrowseUp)
-        } else {
-            onAction(PlaylistDetailUiAction.OnDismissAddSheet)
-        }
-    }
     ModalBottomSheet(
         onDismissRequest = { onAction(PlaylistDetailUiAction.OnDismissAddSheet) },
+        // The sheet is its own window and therefore owns the back gesture - a handler in the
+        // screen's composition never sees it. Turning off the built-in back dismissal makes the
+        // handler inside the content the single decision point.
         properties = ModalBottomSheetProperties(shouldDismissOnBackPress = false),
     ) {
+        // While browsing a share, back climbs one level; at the top level it closes the sheet.
+        BackHandler {
+            if (state.addBrowse != null) {
+                onAction(PlaylistDetailUiAction.OnAddBrowseUp)
+            } else {
+                onAction(PlaylistDetailUiAction.OnDismissAddSheet)
+            }
+        }
         Column(
             modifier = Modifier
                 .fillMaxWidth()

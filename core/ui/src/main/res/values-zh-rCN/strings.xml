@@ -444,6 +444,7 @@
     <string name="sort_duration_ascending">时长升序</string>
     <string name="sort_duration_descending">时长降序</string>
     <string name="sort_shuffle">随机打乱</string>
+    <string name="sort_custom_order">自定义顺序</string>
     <string name="sort_restore_added_order">恢复加入顺序</string>
     <string name="empty_playlist_title">此播放列表为空</string>
     <string name="search_playlist">搜索播放列表</string>

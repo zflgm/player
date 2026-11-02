@@ -8,9 +8,11 @@ import com.zflgm.player.core.data.playlist.M3UDocumentPermissionManager
 import com.zflgm.player.core.data.playlist.M3UParser
 import com.zflgm.player.core.data.playlist.PersistedM3UGrant
 import com.zflgm.player.core.data.repository.PlaylistRepository
+import com.zflgm.player.core.data.repository.PreferencesRepository
 import com.zflgm.player.core.media.sync.MediaSynchronizer
 import com.zflgm.player.core.model.M3UPlaylist
 import com.zflgm.player.core.model.PlaylistSummary
+import com.zflgm.player.core.model.PlaylistSortMode
 import com.zflgm.player.core.model.PlaylistType
 import com.zflgm.player.core.model.compareNaturalTitles
 import com.zflgm.player.core.ui.R
@@ -22,6 +24,9 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.koin.core.annotation.InjectedParam
@@ -30,6 +35,7 @@ import org.koin.core.annotation.KoinViewModel
 @KoinViewModel
 class PlaylistListViewModel(
     private val playlistRepository: PlaylistRepository,
+    private val preferencesRepository: PreferencesRepository,
     private val m3uParser: M3UParser,
     private val documentPermissionManager: M3UDocumentPermissionManager,
     private val mediaSynchronizer: MediaSynchronizer,
@@ -49,11 +55,20 @@ class PlaylistListViewModel(
 
     init {
         viewModelScope.launch {
-            playlistRepository.observePlaylists().collect { playlists ->
-                stateInternal.update {
-                    it.copy(playlistsDataState = DataState.Success(playlists))
+            combine(
+                playlistRepository.observePlaylists(),
+                preferencesRepository.applicationPreferences
+                    .map { it.playlistSortMode }
+                    .distinctUntilChanged(),
+            ) { playlists, sortMode -> playlists.orderedBy(sortMode) to sortMode }
+                .collect { (playlists, sortMode) ->
+                    stateInternal.update {
+                        it.copy(
+                            playlistsDataState = DataState.Success(playlists),
+                            sortMode = sortMode,
+                        )
+                    }
                 }
-            }
         }
     }
 
@@ -84,7 +99,7 @@ class PlaylistListViewModel(
             is PlaylistUiAction.CreateM3UUrl -> createM3UUrl(action.url)
             is PlaylistUiAction.Rename -> rename(action.playlistId, action.name)
             is PlaylistUiAction.Delete -> delete(action.playlistId)
-            is PlaylistUiAction.SortPlaylists -> sortPlaylists(action.sort)
+            is PlaylistUiAction.SetSortMode -> setSortMode(action.mode)
             is PlaylistUiAction.ReplacePlaylistOrder -> replacePlaylistOrder(action.orderedIds)
         }
     }
@@ -230,24 +245,39 @@ class PlaylistListViewModel(
         }
     }
 
-    /** One-shot ordering the user applies and keeps, mirroring the item-level sort menu. */
-    private fun sortPlaylists(sort: PlaylistListSort) {
-        val playlists = (state.value.playlistsDataState as? DataState.Success)?.value ?: return
-        if (playlists.size < 2) return
-        val orderedIds = when (sort) {
-            PlaylistListSort.NAME_ASCENDING ->
-                playlists.sortedWith { a, b -> compareNaturalTitles(a.name, b.name) }
-            PlaylistListSort.NAME_DESCENDING ->
-                playlists.sortedWith { a, b -> compareNaturalTitles(b.name, a.name) }
-            PlaylistListSort.SHUFFLE -> playlists.shuffled()
-        }.map { it.id }
-        replacePlaylistOrder(orderedIds)
+    /**
+     * Name ordering is a view over the list, not a rewrite of it: the hand-made arrangement
+     * survives, so switching back to custom returns the list to where the user left it.
+     */
+    private fun List<PlaylistSummary>.orderedBy(mode: PlaylistSortMode): List<PlaylistSummary> =
+        when (mode) {
+            PlaylistSortMode.CUSTOM -> this
+            PlaylistSortMode.NAME_ASCENDING ->
+                sortedWith { a, b -> compareNaturalTitles(a.name, b.name) }
+            PlaylistSortMode.NAME_DESCENDING ->
+                sortedWith { a, b -> compareNaturalTitles(b.name, a.name) }
+        }
+
+    private fun setSortMode(mode: PlaylistSortMode) {
+        if (state.value.sortMode == mode) return
+        viewModelScope.launch {
+            preferencesRepository.updateApplicationPreferences {
+                it.copy(playlistSortMode = mode)
+            }
+        }
     }
 
+    /**
+     * A drag is the user taking over the arrangement: store exactly what they see and remember
+     * the list as custom, so the order they just built is what "custom" means from now on.
+     */
     private fun replacePlaylistOrder(orderedIds: List<Long>) {
         viewModelScope.launch {
             try {
                 playlistRepository.replacePlaylistOrder(orderedIds)
+                preferencesRepository.updateApplicationPreferences {
+                    it.copy(playlistSortMode = PlaylistSortMode.CUSTOM)
+                }
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (_: Throwable) {
@@ -277,6 +307,7 @@ data class PlaylistListUiState(
     val creationDialog: PlaylistCreationDialog = PlaylistCreationDialog.NONE,
     val showRenameDialogFor: PlaylistSummary? = null,
     val showDeleteDialogFor: PlaylistSummary? = null,
+    val sortMode: PlaylistSortMode = PlaylistSortMode.CUSTOM,
 )
 
 sealed interface PlaylistUiAction {
@@ -297,12 +328,6 @@ sealed interface PlaylistUiAction {
     data class CreateM3UUrl(val url: String) : PlaylistUiAction
     data class Rename(val playlistId: Long, val name: String) : PlaylistUiAction
     data class Delete(val playlistId: Long) : PlaylistUiAction
-    data class SortPlaylists(val sort: PlaylistListSort) : PlaylistUiAction
+    data class SetSortMode(val mode: PlaylistSortMode) : PlaylistUiAction
     data class ReplacePlaylistOrder(val orderedIds: List<Long>) : PlaylistUiAction
-}
-
-enum class PlaylistListSort {
-    NAME_ASCENDING,
-    NAME_DESCENDING,
-    SHUFFLE,
 }

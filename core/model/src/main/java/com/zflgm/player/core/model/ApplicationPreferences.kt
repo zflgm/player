@@ -14,6 +14,9 @@ data class ApplicationPreferences(
     val mediaViewMode: MediaViewMode = MediaViewMode.FOLDERS,
     val mediaLayoutMode: MediaLayoutMode = MediaLayoutMode.LIST,
 
+    // Playlist screen
+    val playlistSortMode: PlaylistSortMode = PlaylistSortMode.CUSTOM,
+
     // Fields
     val showDurationField: Boolean = true,
     val showFolderDurationField: Boolean = true,

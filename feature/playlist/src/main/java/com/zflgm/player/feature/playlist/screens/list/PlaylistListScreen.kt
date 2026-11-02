@@ -47,6 +47,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import com.zflgm.player.core.model.PlaylistSortMode
 import com.zflgm.player.core.model.PlaylistSummary
 import com.zflgm.player.core.model.PlaylistType
 import com.zflgm.player.core.ui.R
@@ -112,27 +113,25 @@ internal fun PlaylistListScreenContent(
                                 expanded = sortMenuExpanded,
                                 onDismissRequest = { sortMenuExpanded = false },
                             ) {
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.sort_name_ascending)) },
-                                    onClick = {
-                                        sortMenuExpanded = false
-                                        onAction(PlaylistUiAction.SortPlaylists(PlaylistListSort.NAME_ASCENDING))
-                                    },
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.sort_name_descending)) },
-                                    onClick = {
-                                        sortMenuExpanded = false
-                                        onAction(PlaylistUiAction.SortPlaylists(PlaylistListSort.NAME_DESCENDING))
-                                    },
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.sort_shuffle)) },
-                                    onClick = {
-                                        sortMenuExpanded = false
-                                        onAction(PlaylistUiAction.SortPlaylists(PlaylistListSort.SHUFFLE))
-                                    },
-                                )
+                                PlaylistSortMode.entries.forEach { mode ->
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(mode.labelRes)) },
+                                        leadingIcon = {
+                                            if (mode == state.sortMode) {
+                                                Icon(
+                                                    imageVector = NextIcons.Check,
+                                                    contentDescription = null,
+                                                )
+                                            } else {
+                                                Spacer(Modifier.size(24.dp))
+                                            }
+                                        },
+                                        onClick = {
+                                            sortMenuExpanded = false
+                                            onAction(PlaylistUiAction.SetSortMode(mode))
+                                        },
+                                    )
+                                }
                             }
                         }
                     }
@@ -634,3 +633,10 @@ private fun PlaylistListEmptyState(modifier: Modifier = Modifier) {
         )
     }
 }
+
+private val PlaylistSortMode.labelRes: Int
+    get() = when (this) {
+        PlaylistSortMode.NAME_ASCENDING -> R.string.sort_name_ascending
+        PlaylistSortMode.NAME_DESCENDING -> R.string.sort_name_descending
+        PlaylistSortMode.CUSTOM -> R.string.sort_custom_order
+    }
