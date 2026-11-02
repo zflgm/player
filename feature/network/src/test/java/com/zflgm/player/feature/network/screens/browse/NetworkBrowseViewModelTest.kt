@@ -20,6 +20,7 @@ import com.zflgm.player.core.model.M3UPlaylistItem
 import com.zflgm.player.core.model.NetworkConnection
 import com.zflgm.player.core.model.NetworkFile
 import com.zflgm.player.core.model.NetworkProtocol
+import com.zflgm.player.core.model.PlaylistItemSortMode
 import com.zflgm.player.core.model.PlaylistRecord
 import com.zflgm.player.core.model.PlaylistSnapshotDiff
 import com.zflgm.player.core.model.PlaylistSummary
@@ -578,6 +579,7 @@ private class FakePlaylistRepository : PlaylistRepository {
     override suspend fun replaceOrder(playlistId: Long, orderedUris: List<String>) = error("Not used")
     override suspend fun restoreInsertionOrder(playlistId: Long) = error("Not used")
     override suspend fun replacePlaylistOrder(orderedIds: List<Long>) = error("Not used")
+    override suspend fun setItemSort(playlistId: Long, sort: PlaylistItemSortMode) = error("Not used")
     override suspend fun addNetworkSource(playlistId: Long, source: String) = error("Not used")
     override suspend fun getNetworkSources(playlistId: Long): List<String> = error("Not used")
     override suspend fun markNetworkSourcesRefreshed(playlistId: Long, refreshedAt: Long) =

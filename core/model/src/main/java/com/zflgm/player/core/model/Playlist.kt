@@ -30,6 +30,7 @@ data class PlaylistRecord(
     val source: String?,
     val items: List<PlaylistItemRecord>,
     val lastRefreshedAt: Long?,
+    val itemSort: PlaylistItemSortMode = PlaylistItemSortMode.CUSTOM,
 )
 
 data class PlaylistItemRecord(
@@ -109,6 +110,7 @@ data class Playlist(
     val source: String?,
     val items: List<PlaylistItem>,
     val lastRefreshedAt: Long?,
+    val itemSort: PlaylistItemSortMode = PlaylistItemSortMode.CUSTOM,
 ) {
     val lastPlayedItem: PlaylistItem?
         get() = items

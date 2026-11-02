@@ -50,6 +50,7 @@ class ObservePlaylistUseCase(
                         item.copy(position = position)
                     },
                     lastRefreshedAt = record.lastRefreshedAt,
+                    itemSort = record.itemSort,
                 )
             }
         }.distinctUntilChanged()

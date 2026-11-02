@@ -2,6 +2,7 @@ package com.zflgm.player.feature.playlist.screens.detail
 
 import androidx.annotation.StringRes
 import com.zflgm.player.core.model.PlaylistItem
+import com.zflgm.player.core.model.PlaylistItemSortMode
 import com.zflgm.player.core.model.compareNaturalTitles
 import com.zflgm.player.core.ui.R
 import kotlin.random.Random
@@ -73,3 +74,24 @@ private fun durationComparator(descending: Boolean): Comparator<PlaylistItem> = 
 private val PlaylistItem.durationMs: Long?
     get() = video?.duration?.takeIf { it > 0 }
         ?: duration.takeIf { it > 0 }?.times(1000L)
+
+/** The remembered mode this one-shot sort stands for. */
+internal fun PlaylistSort.toItemSortMode(): PlaylistItemSortMode = when (this) {
+    PlaylistSort.NAME_ASCENDING -> PlaylistItemSortMode.NAME_ASCENDING
+    PlaylistSort.NAME_DESCENDING -> PlaylistItemSortMode.NAME_DESCENDING
+    PlaylistSort.DURATION_ASCENDING -> PlaylistItemSortMode.DURATION_ASCENDING
+    PlaylistSort.DURATION_DESCENDING -> PlaylistItemSortMode.DURATION_DESCENDING
+    PlaylistSort.SHUFFLE -> PlaylistItemSortMode.SHUFFLE
+    PlaylistSort.INSERTION_ORDER -> PlaylistItemSortMode.INSERTION_ORDER
+}
+
+/** The sort that reproduces [this] mode, or null when only a hand-made order can. */
+internal fun PlaylistItemSortMode.toPlaylistSortOrNull(): PlaylistSort? = when (this) {
+    PlaylistItemSortMode.CUSTOM -> null
+    PlaylistItemSortMode.NAME_ASCENDING -> PlaylistSort.NAME_ASCENDING
+    PlaylistItemSortMode.NAME_DESCENDING -> PlaylistSort.NAME_DESCENDING
+    PlaylistItemSortMode.DURATION_ASCENDING -> PlaylistSort.DURATION_ASCENDING
+    PlaylistItemSortMode.DURATION_DESCENDING -> PlaylistSort.DURATION_DESCENDING
+    PlaylistItemSortMode.SHUFFLE -> PlaylistSort.SHUFFLE
+    PlaylistItemSortMode.INSERTION_ORDER -> PlaylistSort.INSERTION_ORDER
+}

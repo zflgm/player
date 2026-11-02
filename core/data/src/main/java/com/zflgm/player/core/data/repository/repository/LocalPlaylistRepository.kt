@@ -9,6 +9,7 @@ import com.zflgm.player.core.database.entities.PlaylistWithItems
 import com.zflgm.player.core.model.M3UPlaylist
 import com.zflgm.player.core.model.M3UPlaylistItem
 import com.zflgm.player.core.model.PlaylistItemRecord
+import com.zflgm.player.core.model.PlaylistItemSortMode
 import com.zflgm.player.core.model.PlaylistRecord
 import com.zflgm.player.core.model.PlaylistSnapshotDiff
 import com.zflgm.player.core.model.PlaylistSummary
@@ -121,6 +122,10 @@ class LocalPlaylistRepository(
         playlistDao.replacePlaylistOrder(orderedIds)
     }
 
+    override suspend fun setItemSort(playlistId: Long, sort: PlaylistItemSortMode) {
+        playlistDao.setItemSort(playlistId, sort.name)
+    }
+
     override suspend fun addNetworkSource(playlistId: Long, source: String) {
         playlistDao.insertSources(listOf(PlaylistSourceEntity(playlistId = playlistId, source = source)))
     }
@@ -172,6 +177,9 @@ private fun PlaylistWithItems.toModel() = PlaylistRecord(
         )
     },
     lastRefreshedAt = playlist.lastRefreshedAt,
+    itemSort = playlist.itemSort
+        ?.let { stored -> PlaylistItemSortMode.entries.firstOrNull { it.name == stored } }
+        ?: PlaylistItemSortMode.CUSTOM,
 )
 
 private fun List<M3UPlaylistItem>.toEntities(playlistId: Long = 0): List<PlaylistItemEntity> =

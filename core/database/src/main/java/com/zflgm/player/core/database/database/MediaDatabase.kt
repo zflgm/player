@@ -24,7 +24,7 @@ import com.zflgm.player.core.database.entities.PlaylistSourceEntity
         PlaylistItemEntity::class,
         PlaylistSourceEntity::class,
     ],
-    version = 14,
+    version = 15,
     exportSchema = true,
 )
 abstract class MediaDatabase : RoomDatabase() {
@@ -337,6 +337,12 @@ abstract class MediaDatabase : RoomDatabase() {
                 db.execSQL(
                     "ALTER TABLE `playlist` ADD COLUMN `sort_order` INTEGER NOT NULL DEFAULT 0",
                 )
+            }
+        }
+
+        val MIGRATION_14_15 = object : Migration(14, 15) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `playlist` ADD COLUMN `item_sort` TEXT")
             }
         }
 

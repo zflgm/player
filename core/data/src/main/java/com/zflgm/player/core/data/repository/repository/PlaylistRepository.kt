@@ -2,6 +2,7 @@ package com.zflgm.player.core.data.repository
 
 import com.zflgm.player.core.model.M3UPlaylist
 import com.zflgm.player.core.model.M3UPlaylistItem
+import com.zflgm.player.core.model.PlaylistItemSortMode
 import com.zflgm.player.core.model.PlaylistRecord
 import com.zflgm.player.core.model.PlaylistSnapshotDiff
 import com.zflgm.player.core.model.PlaylistSummary
@@ -49,6 +50,9 @@ interface PlaylistRepository {
 
     /** Rewrites the display order of the playlists themselves. */
     suspend fun replacePlaylistOrder(orderedIds: List<Long>)
+
+    /** Remembers which ordering this playlist's rows are kept in, for the sort menu and for re-applying it. */
+    suspend fun setItemSort(playlistId: Long, sort: PlaylistItemSortMode)
 
     /** Remembers that a network folder feeds this playlist, so refresh can re-scan it. */
     suspend fun addNetworkSource(playlistId: Long, source: String)

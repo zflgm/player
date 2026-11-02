@@ -12,6 +12,7 @@ import com.zflgm.player.core.model.NetworkConnection
 import com.zflgm.player.core.model.NetworkFile
 import com.zflgm.player.core.model.NetworkProtocol
 import com.zflgm.player.core.model.PlaylistItemRecord
+import com.zflgm.player.core.model.PlaylistItemSortMode
 import com.zflgm.player.core.model.PlaylistRecord
 import com.zflgm.player.core.model.PlaylistSnapshotDiff
 import com.zflgm.player.core.model.PlaylistType
@@ -266,6 +267,38 @@ class PlaylistDetailViewModelTest {
 
         assertEquals(1, repository.insertionOrderRestorations)
         assertTrue(repository.orderReplacements.isEmpty())
+    }
+
+    @Test
+    fun pickingASortRemembersItForTheMenu() = runTest(dispatcher) {
+        repository.playlist.value = snapshotRecord("smb://nas/Media/Series?cid=3&subdirs=false")
+        val viewModel = viewModel()
+        runCurrent()
+
+        viewModel.onAction(PlaylistDetailUiAction.SortBy(PlaylistSort.NAME_ASCENDING))
+        advanceUntilIdle()
+
+        assertEquals(listOf(PlaylistItemSortMode.NAME_ASCENDING), repository.itemSortWrites)
+    }
+
+    @Test
+    fun draggingRemembersTheOrderAsCustom() = runTest(dispatcher) {
+        repository.playlist.value = snapshotRecord("smb://nas/Media/Series?cid=3&subdirs=false")
+        val viewModel = viewModel()
+        runCurrent()
+
+        viewModel.onAction(
+            PlaylistDetailUiAction.ReplaceOrder(
+                listOf(
+                    "smb://nas/Media/Series/Deleted.mp4?cid=3",
+                    "smb://nas/Media/Series/Second.mp4?cid=3",
+                ),
+            ),
+        )
+        advanceUntilIdle()
+
+        // The menu has to show "custom" after a hand reorder, not the sort that was there before.
+        assertEquals(listOf(PlaylistItemSortMode.CUSTOM), repository.itemSortWrites)
     }
 
     @Test

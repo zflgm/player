@@ -20,6 +20,9 @@ data class PlaylistEntity(
     /** Display rank among playlists; ties fall back to creation order. */
     @ColumnInfo(name = "sort_order", defaultValue = "0")
     val sortOrder: Int = 0,
+    /** The ordering the rows are kept in ([PlaylistItemSortMode] name); null means hand-arranged. */
+    @ColumnInfo(name = "item_sort")
+    val itemSort: String? = null,
 )
 
 data class PlaylistSummaryEntity(

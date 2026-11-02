@@ -10,6 +10,7 @@ import com.zflgm.player.core.model.M3UPlaylist
 import com.zflgm.player.core.model.M3UPlaylistItem
 import com.zflgm.player.core.model.NetworkConnection
 import com.zflgm.player.core.model.NetworkFile
+import com.zflgm.player.core.model.PlaylistItemSortMode
 import com.zflgm.player.core.model.PlaylistRecord
 import com.zflgm.player.core.model.PlaylistSnapshotDiff
 import com.zflgm.player.core.model.PlaylistSummary
@@ -106,6 +107,12 @@ internal class FakePlaylistRepository : PlaylistRepository {
 
     override suspend fun replacePlaylistOrder(orderedIds: List<Long>) {
         playlistOrderReplacements += orderedIds
+    }
+
+    val itemSortWrites = mutableListOf<PlaylistItemSortMode>()
+
+    override suspend fun setItemSort(playlistId: Long, sort: PlaylistItemSortMode) {
+        itemSortWrites += sort
     }
 
     val networkSources = mutableMapOf<Long, MutableList<String>>()

@@ -20,6 +20,7 @@ import com.zflgm.player.core.model.NetworkConnection
 import com.zflgm.player.core.model.NetworkFile
 import com.zflgm.player.core.model.Playlist
 import com.zflgm.player.core.model.PlaylistItem
+import com.zflgm.player.core.model.PlaylistItemSortMode
 import com.zflgm.player.core.model.PlaylistType
 import com.zflgm.player.core.model.Video
 import com.zflgm.player.core.ui.R
@@ -65,6 +66,10 @@ class PlaylistDetailViewModel(
     private var refreshJob: Job? = null
     private var addClient: NetworkClient? = null
 
+    // Rows were just added under an automatic order; the next emission re-applies it, because the
+    // repository only knows the order it was told, not the one the mode implies.
+    private var reapplyOrderOnNextEmission = false
+
     init {
         viewModelScope.launch {
             observePlaylist(input.playlistId).collect { playlist ->
@@ -73,6 +78,10 @@ class PlaylistDetailViewModel(
                         playlistDataState = DataState.Success(playlist),
                         canRefresh = playlist.canRefresh(),
                     )
+                }
+                if (reapplyOrderOnNextEmission && playlist != null) {
+                    reapplyOrderOnNextEmission = false
+                    reapplyAutomaticOrder(playlist)
                 }
             }
         }
@@ -117,6 +126,7 @@ class PlaylistDetailViewModel(
             is PlaylistDetailUiAction.OnPlay -> play(action.startUri)
             is PlaylistDetailUiAction.Refresh -> refresh()
             is PlaylistDetailUiAction.SortBy -> sortBy(action.sort)
+            is PlaylistDetailUiAction.UseCustomOrder -> useCustomOrder()
             is PlaylistDetailUiAction.ShowRemoveDialogFor -> stateInternal.update {
                 it.copy(showRemoveDialogFor = action.item)
             }
@@ -152,17 +162,40 @@ class PlaylistDetailViewModel(
         output.playPlaylist(input.playlistId, startUri)
     }
 
+    /**
+     * Keeps an automatically ordered list in its order after rows arrive: "name A-Z" would
+     * otherwise end with a stray new episode at the bottom.
+     */
+    private suspend fun reapplyAutomaticOrder(playlist: Playlist) {
+        if (!playlist.itemSort.isAutomatic) return
+        val sort = playlist.itemSort.toPlaylistSortOrNull() ?: return
+        // Appended rows already sit at the end in insertion order.
+        if (sort == PlaylistSort.INSERTION_ORDER) return
+        playlistRepository.replaceOrder(
+            input.playlistId,
+            playlistUrisForSort(playlist.items, sort),
+        )
+    }
+
     private fun sortBy(sort: PlaylistSort) {
         val playlist = currentPlaylist() ?: return
         if (!playlist.isOrderEditable) return
         if (sort == PlaylistSort.INSERTION_ORDER) {
             // Only the rows know how they were added: the list on screen is already read back by position.
-            updatePlaylist(block = { playlistRepository.restoreInsertionOrder(input.playlistId) })
+            updatePlaylist(
+                block = {
+                    playlistRepository.restoreInsertionOrder(input.playlistId)
+                    playlistRepository.setItemSort(input.playlistId, sort.toItemSortMode())
+                },
+            )
             return
         }
         val orderedUris = playlistUrisForSort(playlist.items, sort)
         updatePlaylist(
-            block = { playlistRepository.replaceOrder(input.playlistId, orderedUris) },
+            block = {
+                playlistRepository.replaceOrder(input.playlistId, orderedUris)
+                playlistRepository.setItemSort(input.playlistId, sort.toItemSortMode())
+            },
         )
     }
 
@@ -228,6 +261,7 @@ class PlaylistDetailViewModel(
                     }
                 }
             val diff = playlistRepository.refreshNetworkSnapshot(input.playlistId, discovered + preserved)
+            if (diff.added > 0) reapplyOrderOnNextEmission = true
             if (unreadableFolders.isNotEmpty()) {
                 showToast(
                     systemService.getString(R.string.snapshot_scan_partial).format(unreadableFolders.size),
@@ -302,6 +336,7 @@ class PlaylistDetailViewModel(
             }
         }
         playlistRepository.markNetworkSourcesRefreshed(playlist.id, System.currentTimeMillis())
+        if (added > 0) reapplyOrderOnNextEmission = true
         if (unreadable > 0) {
             showToast(systemService.getString(R.string.snapshot_scan_partial).format(unreadable))
         }
@@ -342,7 +377,15 @@ class PlaylistDetailViewModel(
         updatePlaylist(
             block = {
                 playlistRepository.replaceOrder(input.playlistId, orderedUris)
+                // Reordering by hand is what "custom" means from now on.
+                playlistRepository.setItemSort(input.playlistId, PlaylistItemSortMode.CUSTOM)
             },
+        )
+    }
+
+    private fun useCustomOrder() {
+        updatePlaylist(
+            block = { playlistRepository.setItemSort(input.playlistId, PlaylistItemSortMode.CUSTOM) },
         )
     }
 
@@ -417,7 +460,10 @@ class PlaylistDetailViewModel(
         val uris = state.value.addSelection.toList()
         if (uris.isEmpty()) return
         updatePlaylist(
-            block = { playlistRepository.addVideos(input.playlistId, uris) },
+            block = {
+                playlistRepository.addVideos(input.playlistId, uris)
+                reapplyOrderOnNextEmission = true
+            },
             onSuccess = {
                 closeAddClient()
                 stateInternal.update {
@@ -549,6 +595,7 @@ class PlaylistDetailViewModel(
                         playlistId = input.playlistId,
                         source = NetworkUri.snapshotSource(connection, folderPath, recursive = true),
                     )
+                    reapplyOrderOnNextEmission = true
                     closeAddClient()
                     stateInternal.update {
                         it.copy(showAddSheet = false, addSelection = emptySet(), addBrowse = null)
@@ -631,6 +678,7 @@ sealed interface PlaylistDetailUiAction {
     data class OnPlay(val startUri: Uri) : PlaylistDetailUiAction
     data object Refresh : PlaylistDetailUiAction
     data class SortBy(val sort: PlaylistSort) : PlaylistDetailUiAction
+    data object UseCustomOrder : PlaylistDetailUiAction
     data class ShowRemoveDialogFor(val item: PlaylistItem) : PlaylistDetailUiAction
     data object DismissRemoveDialog : PlaylistDetailUiAction
     data class RemoveVideo(val videoUri: String) : PlaylistDetailUiAction

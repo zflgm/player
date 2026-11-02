@@ -71,6 +71,7 @@ import coil3.request.crossfade
 import com.zflgm.player.core.common.extensions.isTelevision
 import com.zflgm.player.core.model.Playlist
 import com.zflgm.player.core.model.PlaylistItem
+import com.zflgm.player.core.model.PlaylistItemSortMode
 import com.zflgm.player.core.model.PlaylistType
 import com.zflgm.player.core.ui.R
 import com.zflgm.player.core.ui.base.DataState
@@ -213,17 +214,49 @@ internal fun PlaylistDetailScreenContent(
                                     expanded = sortMenuExpanded,
                                     onDismissRequest = { sortMenuExpanded = false },
                                 ) {
+                                    // The menu is a state picker, not a set of fire-and-forget
+                                    // actions: it says which ordering the list is kept in.
+                                    val currentSort = playlist.itemSort
                                     PlaylistSort.entries
                                         .filter { it.showsFor(hasDuration) }
                                         .forEach { sort ->
                                             DropdownMenuItem(
                                                 text = { Text(stringResource(sort.labelRes)) },
+                                                leadingIcon = {
+                                                    if (sort.toItemSortMode() == currentSort) {
+                                                        Icon(
+                                                            imageVector = NextIcons.Check,
+                                                            contentDescription = null,
+                                                        )
+                                                    } else {
+                                                        Spacer(Modifier.size(24.dp))
+                                                    }
+                                                },
                                                 onClick = {
                                                     sortMenuExpanded = false
                                                     onAction(PlaylistDetailUiAction.SortBy(sort))
                                                 },
                                             )
                                         }
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(stringResource(R.string.sort_custom_order))
+                                        },
+                                        leadingIcon = {
+                                            if (currentSort == PlaylistItemSortMode.CUSTOM) {
+                                                Icon(
+                                                    imageVector = NextIcons.Check,
+                                                    contentDescription = null,
+                                                )
+                                            } else {
+                                                Spacer(Modifier.size(24.dp))
+                                            }
+                                        },
+                                        onClick = {
+                                            sortMenuExpanded = false
+                                            onAction(PlaylistDetailUiAction.UseCustomOrder)
+                                        },
+                                    )
                                 }
                             }
                         }
