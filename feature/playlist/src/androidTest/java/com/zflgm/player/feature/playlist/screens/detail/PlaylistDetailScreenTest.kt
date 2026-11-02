@@ -206,50 +206,22 @@ class PlaylistDetailScreenTest {
     }
 
     @Test
-    fun touchReorderModeUsesWholeRowsWithoutPlayingVideos() {
+    fun touchRowsPlayOnTapAndKeepTheirRowMenu() {
         val actions = mutableListOf<PlaylistDetailUiAction>()
         val playlist = playlist(
             item("content://one", "One.mp4", "/Movies", 0),
             item("content://two", "Two.mp4", "/Movies", 1),
         )
 
-        setContent(
-            playlist = playlist,
-            isTv = false,
-            isReordering = true,
-            onAction = actions::add,
-        )
+        setContent(playlist = playlist, isTv = false, onAction = actions::add)
 
-        composeRule.onAllNodesWithContentDescription(stringRes(R.string.play)).assertCountEquals(0)
-        composeRule.onNodeWithContentDescription(stringRes(R.string.finish_reordering)).assertIsDisplayed()
-        composeRule.onAllNodesWithContentDescription(stringRes(R.string.reorder_playlist_item)).assertCountEquals(2)
-        composeRule.onAllNodesWithContentDescription(stringRes(R.string.playlist_actions)).assertCountEquals(0)
+        // Reordering is a long press on the row itself, so the row menu stays reachable.
+        composeRule.onAllNodesWithContentDescription(stringRes(R.string.playlist_actions))
+            .assertCountEquals(2)
         composeRule.onNodeWithText("One").performClick()
-        assertEquals(emptyList<PlaylistDetailUiAction>(), actions)
-
-        composeRule.onNodeWithContentDescription(stringRes(R.string.finish_reordering)).performClick()
         assertEquals(
-            listOf(PlaylistDetailUiAction.OnFinishReorderingClick),
-            actions,
-        )
-    }
-
-    @Test
-    fun reorderButtonEmitsReorderAction() {
-        val actions = mutableListOf<PlaylistDetailUiAction>()
-        setContent(
-            playlist = playlist(
-                item("content://one", "One.mp4", "/Movies", 0),
-                item("content://two", "Two.mp4", "/Movies", 1),
-            ),
-            onAction = actions::add,
-        )
-
-        composeRule.onNodeWithContentDescription(stringRes(R.string.reorder_playlist)).performClick()
-
-        assertEquals(
-            listOf(PlaylistDetailUiAction.OnReorderClick),
-            actions,
+            PlaylistDetailUiAction.OnPlay(Uri.parse("content://one")),
+            actions.single(),
         )
     }
 
@@ -332,7 +304,6 @@ class PlaylistDetailScreenTest {
         updateActionState: ActionState = ActionState.Idle,
         isSearching: Boolean = false,
         searchQuery: String = "",
-        isReordering: Boolean = false,
         showRemoveDialogFor: PlaylistItem? = null,
         onAction: (PlaylistDetailUiAction) -> Unit = {},
     ) {
@@ -346,7 +317,6 @@ class PlaylistDetailScreenTest {
                         updateActionState = updateActionState,
                         isSearching = isSearching,
                         searchQuery = searchQuery,
-                        isReordering = isReordering,
                         showRemoveDialogFor = showRemoveDialogFor,
                     ),
                     onAction = onAction,

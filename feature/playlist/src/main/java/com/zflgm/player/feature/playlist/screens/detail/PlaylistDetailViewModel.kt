@@ -71,9 +71,6 @@ class PlaylistDetailViewModel(
                 stateInternal.update { currentState ->
                     currentState.copy(
                         playlistDataState = DataState.Success(playlist),
-                        isReordering = currentState.isReordering &&
-                            playlist?.isOrderEditable == true &&
-                            playlist.items.size > 1,
                         canRefresh = playlist.canRefresh(),
                     )
                 }
@@ -109,23 +106,13 @@ class PlaylistDetailViewModel(
         when (action) {
             is PlaylistDetailUiAction.OnNavigateUpClick -> output.navigateUp()
             is PlaylistDetailUiAction.OnSearchClick -> stateInternal.update {
-                it.copy(isSearching = true, isReordering = false)
+                it.copy(isSearching = true)
             }
             is PlaylistDetailUiAction.OnSearchQueryChange -> stateInternal.update {
                 it.copy(searchQuery = action.query)
             }
             is PlaylistDetailUiAction.OnCloseSearchClick -> stateInternal.update {
                 it.copy(isSearching = false, searchQuery = "")
-            }
-            is PlaylistDetailUiAction.OnReorderClick -> {
-                if (currentPlaylist()?.isOrderEditable == true) {
-                    stateInternal.update {
-                        it.copy(isReordering = true, isSearching = false, searchQuery = "")
-                    }
-                }
-            }
-            is PlaylistDetailUiAction.OnFinishReorderingClick -> stateInternal.update {
-                it.copy(isReordering = false)
             }
             is PlaylistDetailUiAction.OnPlay -> play(action.startUri)
             is PlaylistDetailUiAction.Refresh -> refresh()
@@ -605,7 +592,6 @@ data class PlaylistDetailUiState(
     val isRefreshing: Boolean = false,
     val isSearching: Boolean = false,
     val searchQuery: String = "",
-    val isReordering: Boolean = false,
     val showRemoveDialogFor: PlaylistItem? = null,
     val showAddSheet: Boolean = false,
     val addTab: AddSheetTab = AddSheetTab.LOCAL,
@@ -642,8 +628,6 @@ sealed interface PlaylistDetailUiAction {
     data object OnSearchClick : PlaylistDetailUiAction
     data class OnSearchQueryChange(val query: String) : PlaylistDetailUiAction
     data object OnCloseSearchClick : PlaylistDetailUiAction
-    data object OnReorderClick : PlaylistDetailUiAction
-    data object OnFinishReorderingClick : PlaylistDetailUiAction
     data class OnPlay(val startUri: Uri) : PlaylistDetailUiAction
     data object Refresh : PlaylistDetailUiAction
     data class SortBy(val sort: PlaylistSort) : PlaylistDetailUiAction

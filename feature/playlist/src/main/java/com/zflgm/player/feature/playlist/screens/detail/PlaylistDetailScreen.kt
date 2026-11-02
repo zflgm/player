@@ -116,9 +116,6 @@ internal fun PlaylistDetailScreenContent(
         ?.uri
         ?.toUri()
         ?: videoUris.firstOrNull()
-    val isReordering = state.isReordering &&
-        playlist?.isOrderEditable == true &&
-        !isTv
     var sortMenuExpanded by rememberSaveable { mutableStateOf(false) }
     val searchFocusRequester = remember { FocusRequester() }
     val contentFocusRequester = rememberTvListFocusRequester()
@@ -130,11 +127,6 @@ internal fun PlaylistDetailScreenContent(
 
     LaunchedEffect(state.isSearching) {
         if (state.isSearching) searchFocusRequester.requestFocus()
-    }
-    LaunchedEffect(isTv, state.isReordering) {
-        if (isTv && state.isReordering) {
-            onAction(PlaylistDetailUiAction.OnFinishReorderingClick)
-        }
     }
     BackHandler(enabled = state.isSearching, onBack = exitSearch)
 
@@ -204,136 +196,104 @@ internal fun PlaylistDetailScreenContent(
                 },
                 actions = {
                     if (!state.isSearching) {
-                        if (isReordering) {
-                            IconButton(
-                                onClick = {
-                                    onAction(PlaylistDetailUiAction.OnFinishReorderingClick)
-                                },
-                                enabled = !state.updateActionState.isRunning,
-                                modifier = Modifier.tvFocusRing(),
-                            ) {
-                                Icon(
-                                    imageVector = NextIcons.Check,
-                                    contentDescription = stringResource(R.string.finish_reordering),
-                                )
-                            }
-                        } else {
-                            if (playlist != null && playlist.isOrderEditable && playlist.items.size > 1) {
-                                val hasDuration = playlist.items.hasSortableDuration()
-                                Box {
-                                    IconButton(
-                                        onClick = { sortMenuExpanded = true },
-                                        enabled = !state.updateActionState.isRunning,
-                                        modifier = Modifier.tvFocusRing(),
-                                    ) {
-                                        Icon(
-                                            imageVector = NextIcons.Sort,
-                                            contentDescription = stringResource(R.string.sort_playlist),
-                                        )
-                                    }
-                                    DropdownMenu(
-                                        expanded = sortMenuExpanded,
-                                        onDismissRequest = { sortMenuExpanded = false },
-                                    ) {
-                                        PlaylistSort.entries
-                                            .filter { it.showsFor(hasDuration) }
-                                            .forEach { sort ->
-                                                DropdownMenuItem(
-                                                    text = { Text(stringResource(sort.labelRes)) },
-                                                    onClick = {
-                                                        sortMenuExpanded = false
-                                                        onAction(PlaylistDetailUiAction.SortBy(sort))
-                                                    },
-                                                )
-                                            }
-                                    }
-                                }
-                            }
-                            IconButton(
-                                onClick = {
-                                    onAction(PlaylistDetailUiAction.OnSearchClick)
-                                },
-                                enabled = playlist != null,
-                                modifier = Modifier.tvFocusRing(),
-                            ) {
-                                Icon(
-                                    imageVector = NextIcons.Search,
-                                    contentDescription = stringResource(R.string.search),
-                                )
-                            }
-                            // Secondary actions live in one place; the bar itself keeps the
-                            // things people reach for (search and the item sort menu).
-                            var moreExpanded by rememberSaveable { mutableStateOf(false) }
+                        if (playlist != null && playlist.isOrderEditable && playlist.items.size > 1) {
+                            val hasDuration = playlist.items.hasSortableDuration()
                             Box {
                                 IconButton(
-                                    onClick = { moreExpanded = true },
+                                    onClick = { sortMenuExpanded = true },
+                                    enabled = !state.updateActionState.isRunning,
                                     modifier = Modifier.tvFocusRing(),
                                 ) {
                                     Icon(
-                                        imageVector = NextIcons.MoreVert,
-                                        contentDescription = stringResource(R.string.more),
+                                        imageVector = NextIcons.Sort,
+                                        contentDescription = stringResource(R.string.sort_playlist),
                                     )
                                 }
                                 DropdownMenu(
-                                    expanded = moreExpanded,
-                                    onDismissRequest = { moreExpanded = false },
+                                    expanded = sortMenuExpanded,
+                                    onDismissRequest = { sortMenuExpanded = false },
                                 ) {
-                                    if (playlist?.isOrderEditable == true) {
-                                        DropdownMenuItem(
-                                            text = { Text(stringResource(R.string.add_to_playlist)) },
-                                            leadingIcon = {
+                                    PlaylistSort.entries
+                                        .filter { it.showsFor(hasDuration) }
+                                        .forEach { sort ->
+                                            DropdownMenuItem(
+                                                text = { Text(stringResource(sort.labelRes)) },
+                                                onClick = {
+                                                    sortMenuExpanded = false
+                                                    onAction(PlaylistDetailUiAction.SortBy(sort))
+                                                },
+                                            )
+                                        }
+                                }
+                            }
+                        }
+                        IconButton(
+                            onClick = {
+                                onAction(PlaylistDetailUiAction.OnSearchClick)
+                            },
+                            enabled = playlist != null,
+                            modifier = Modifier.tvFocusRing(),
+                        ) {
+                            Icon(
+                                imageVector = NextIcons.Search,
+                                contentDescription = stringResource(R.string.search),
+                            )
+                        }
+                        // Secondary actions live in one place; the bar keeps the things people
+                        // reach for (search and the item sort menu).
+                        var moreExpanded by rememberSaveable { mutableStateOf(false) }
+                        Box {
+                            IconButton(
+                                onClick = { moreExpanded = true },
+                                modifier = Modifier.tvFocusRing(),
+                            ) {
+                                Icon(
+                                    imageVector = NextIcons.MoreVert,
+                                    contentDescription = stringResource(R.string.more),
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = moreExpanded,
+                                onDismissRequest = { moreExpanded = false },
+                            ) {
+                                if (playlist?.isOrderEditable == true) {
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.add_to_playlist)) },
+                                        leadingIcon = {
+                                            Icon(
+                                                imageVector = NextIcons.PlaylistAdd,
+                                                contentDescription = null,
+                                            )
+                                        },
+                                        enabled = !state.updateActionState.isRunning,
+                                        onClick = {
+                                            moreExpanded = false
+                                            onAction(PlaylistDetailUiAction.OnShowAddSheet)
+                                        },
+                                    )
+                                }
+                                if (state.canRefresh) {
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.refresh_playlist)) },
+                                        leadingIcon = {
+                                            if (state.isRefreshing) {
+                                                CircularProgressIndicator(
+                                                    modifier = Modifier.size(24.dp),
+                                                    strokeWidth = 2.dp,
+                                                )
+                                            } else {
                                                 Icon(
-                                                    imageVector = NextIcons.PlaylistAdd,
+                                                    imageVector = NextIcons.Update,
                                                     contentDescription = null,
                                                 )
-                                            },
-                                            enabled = !state.updateActionState.isRunning,
-                                            onClick = {
-                                                moreExpanded = false
-                                                onAction(PlaylistDetailUiAction.OnShowAddSheet)
-                                            },
-                                        )
-                                    }
-                                    if (state.canRefresh) {
-                                        DropdownMenuItem(
-                                            text = { Text(stringResource(R.string.refresh_playlist)) },
-                                            leadingIcon = {
-                                                if (state.isRefreshing) {
-                                                    CircularProgressIndicator(
-                                                        modifier = Modifier.size(24.dp),
-                                                        strokeWidth = 2.dp,
-                                                    )
-                                                } else {
-                                                    Icon(
-                                                        imageVector = NextIcons.Update,
-                                                        contentDescription = null,
-                                                    )
-                                                }
-                                            },
-                                            enabled = !state.isRefreshing,
-                                            onClick = {
-                                                moreExpanded = false
-                                                onAction(PlaylistDetailUiAction.Refresh)
-                                            },
-                                        )
-                                    }
-                                    if (!isTv && playlist?.isOrderEditable == true) {
-                                        DropdownMenuItem(
-                                            text = { Text(stringResource(R.string.reorder_playlist)) },
-                                            leadingIcon = {
-                                                Icon(
-                                                    imageVector = NextIcons.Reorder,
-                                                    contentDescription = null,
-                                                )
-                                            },
-                                            enabled = videoUris.size > 1 &&
-                                                !state.updateActionState.isRunning,
-                                            onClick = {
-                                                moreExpanded = false
-                                                onAction(PlaylistDetailUiAction.OnReorderClick)
-                                            },
-                                        )
-                                    }
+                                            }
+                                        },
+                                        enabled = !state.isRefreshing,
+                                        onClick = {
+                                            moreExpanded = false
+                                            onAction(PlaylistDetailUiAction.Refresh)
+                                        },
+                                    )
                                 }
                             }
                         }
@@ -342,7 +302,7 @@ internal fun PlaylistDetailScreenContent(
             )
         },
         floatingActionButton = {
-            if (!state.isSearching && !isReordering && playbackStartUri != null) {
+            if (!state.isSearching && playbackStartUri != null) {
                 ExtendedFloatingActionButton(
                     onClick = {
                         onAction(
@@ -398,11 +358,8 @@ internal fun PlaylistDetailScreenContent(
                             playlist = playlist,
                             contentFocusRequester = contentFocusRequester,
                             isTv = isTv,
-                            isReordering = isReordering,
                             searchQuery = state.searchQuery,
-                            showPlayFab = !state.isSearching &&
-                                !isReordering &&
-                                playbackStartUri != null,
+                            showPlayFab = !state.isSearching && playbackStartUri != null,
                             actionsEnabled = !state.updateActionState.isRunning,
                             scaffoldPadding = scaffoldPadding,
                             onAction = onAction,
@@ -443,7 +400,6 @@ private fun PlaylistDetailContent(
     playlist: Playlist,
     contentFocusRequester: FocusRequester,
     isTv: Boolean,
-    isReordering: Boolean,
     searchQuery: String,
     showPlayFab: Boolean,
     actionsEnabled: Boolean,
@@ -466,6 +422,13 @@ private fun PlaylistDetailContent(
             }
         }
     }
+
+    // Dragging rewrites the stored order, so it is only offered when the visible rows *are* the
+    // whole list and this list owns its order.
+    val canReorder = !isTv &&
+        playlist.isOrderEditable &&
+        searchQuery.isBlank() &&
+        visibleItems.size > 1
 
     LaunchedEffect(playlist.items) {
         if (!isDragging) displayedItems = playlist.items
@@ -523,69 +486,40 @@ private fun PlaylistDetailContent(
                         val onPlay = {
                             onAction(PlaylistDetailUiAction.OnPlay(item.uri.toUri()))
                         }
-                        if (isReordering && !isTv) {
-                            ReorderableItem(
-                                state = reorderState,
-                                key = item.uri,
-                            ) {
-                                PlaylistVideoRow(
-                                    item = item,
-                                    isFirstItem = index == 0,
-                                    isLastItem = index == visibleItems.lastIndex,
-                                    isTv = false,
-                                    isReordering = true,
-                                    isEditable = true,
-                                    actionsEnabled = actionsEnabled,
-                                    modifier = Modifier.draggableHandle(
-                                        enabled = actionsEnabled,
-                                        dragGestureDetector = DragGestureDetector.LongPress,
-                                        onDragStarted = {
-                                            isDragging = true
-                                            hapticFeedback.performHapticFeedback(
-                                                HapticFeedbackType.GestureThresholdActivate,
-                                            )
-                                        },
-                                        onDragStopped = {
-                                            isDragging = false
-                                            onAction(
-                                                PlaylistDetailUiAction.ReplaceOrder(
-                                                    displayedItems.map { it.uri },
-                                                ),
-                                            )
-                                            hapticFeedback.performHapticFeedback(
-                                                HapticFeedbackType.GestureEnd,
-                                            )
-                                        },
-                                    ),
-                                    reorderHandle = {
-                                        Box(
-                                            modifier = Modifier.size(48.dp),
-                                            contentAlignment = Alignment.Center,
-                                        ) {
-                                            Icon(
-                                                imageVector = NextIcons.DragHandle,
-                                                contentDescription = stringResource(
-                                                    R.string.reorder_playlist_item,
-                                                ),
-                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            )
-                                        }
-                                    },
-                                    onClick = onPlay,
-                                    onRemove = {
-                                        onAction(PlaylistDetailUiAction.ShowRemoveDialogFor(item))
-                                    },
-                                )
-                            }
-                        } else {
+                        // Long-press picks a row up, tap still plays it: no separate reorder
+                        // mode, exactly like the list of playlists itself.
+                        ReorderableItem(
+                            state = reorderState,
+                            key = item.uri,
+                        ) {
                             PlaylistVideoRow(
                                 item = item,
                                 isFirstItem = index == 0,
                                 isLastItem = index == visibleItems.lastIndex,
                                 isTv = isTv,
-                                isReordering = isReordering,
                                 isEditable = playlist.isOrderEditable,
                                 actionsEnabled = actionsEnabled,
+                                modifier = Modifier.draggableHandle(
+                                    enabled = canReorder && actionsEnabled,
+                                    dragGestureDetector = DragGestureDetector.LongPress,
+                                    onDragStarted = {
+                                        isDragging = true
+                                        hapticFeedback.performHapticFeedback(
+                                            HapticFeedbackType.GestureThresholdActivate,
+                                        )
+                                    },
+                                    onDragStopped = {
+                                        isDragging = false
+                                        onAction(
+                                            PlaylistDetailUiAction.ReplaceOrder(
+                                                displayedItems.map { it.uri },
+                                            ),
+                                        )
+                                        hapticFeedback.performHapticFeedback(
+                                            HapticFeedbackType.GestureEnd,
+                                        )
+                                    },
+                                ),
                                 onClick = onPlay,
                                 onRemove = {
                                     onAction(PlaylistDetailUiAction.ShowRemoveDialogFor(item))
@@ -642,13 +576,11 @@ private fun PlaylistVideoRow(
     isFirstItem: Boolean,
     isLastItem: Boolean,
     isTv: Boolean,
-    isReordering: Boolean,
     isEditable: Boolean,
     actionsEnabled: Boolean,
     onClick: () -> Unit,
     onRemove: () -> Unit,
     modifier: Modifier = Modifier,
-    reorderHandle: (@Composable () -> Unit)? = null,
 ) {
     var menuExpanded by rememberSaveable { mutableStateOf(false) }
     val context = LocalContext.current
@@ -665,14 +597,9 @@ private fun PlaylistVideoRow(
         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
         isFirstItem = isFirstItem,
         isLastItem = isLastItem,
-        onClick = if (isReordering) {
-            {}
-        } else {
-            onClick
-        },
+        onClick = onClick,
         leadingContent = {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                reorderHandle?.invoke()
                 Box(
                     modifier = Modifier
                         .width(min(100.dp, LocalConfiguration.current.screenWidthDp.dp * 0.30f))
@@ -726,7 +653,7 @@ private fun PlaylistVideoRow(
                 horizontalArrangement = Arrangement.spacedBy(2.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (!isReordering && isEditable) {
+                if (isEditable) {
                     Box {
                         IconButton(
                             onClick = { menuExpanded = true },
